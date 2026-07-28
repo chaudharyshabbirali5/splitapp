@@ -160,8 +160,14 @@ async function seed(ashaUserId: string, bhaviUserId: string): Promise<void> {
   await db.query('begin');
 
   // profiles — one per signed-up user; profiles.id === auth.users.id (TRD 5)
+  //
+  // The on_auth_user_created trigger already inserted a row for each of these
+  // users when createUser() ran, with display_name derived from the email. This
+  // is an upsert rather than a plain insert so the test can still pin the exact
+  // names and UPI IDs its later assertions depend on.
   await db.query(
-    `insert into profiles (id, display_name, upi_id) values ($1,'Asha','asha@upi'), ($2,'Bhavi','bhavi@upi')`,
+    `insert into profiles (id, display_name, upi_id) values ($1,'Asha','asha@upi'), ($2,'Bhavi','bhavi@upi')
+     on conflict (id) do update set display_name = excluded.display_name, upi_id = excluded.upi_id`,
     [ashaUserId, bhaviUserId],
   );
 

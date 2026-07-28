@@ -25,3 +25,23 @@ export const SUPABASE_ANON_KEY = required(
   'NEXT_PUBLIC_SUPABASE_ANON_KEY',
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
 );
+
+/**
+ * Absolute origin of this deployment, used to build the magic-link redirect.
+ *
+ * Order matters. NEXT_PUBLIC_SITE_URL wins so a custom domain can be pinned;
+ * NEXT_PUBLIC_VERCEL_URL covers preview deployments automatically; falling back
+ * to window.location.origin keeps the link correct even if neither is set, which
+ * is why a forgotten env var on Vercel degrades instead of emailing localhost links.
+ */
+export function getSiteUrl(): string {
+  const explicit = process.env.NEXT_PUBLIC_SITE_URL;
+  if (explicit) return explicit.replace(/\/+$/, '');
+
+  const vercel = process.env.NEXT_PUBLIC_VERCEL_URL;
+  if (vercel) return `https://${vercel}`;
+
+  if (typeof window !== 'undefined') return window.location.origin;
+
+  return 'http://localhost:3000';
+}
