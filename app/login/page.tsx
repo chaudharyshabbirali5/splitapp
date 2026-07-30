@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 
-import { createClient } from '@/lib/supabase/client';
+import { createMagicLinkClient } from '@/lib/supabase/client';
 import { getSiteUrl } from '@/lib/supabase/env';
 
 type State =
@@ -29,7 +29,12 @@ function LoginForm() {
 
     setState({ kind: 'sending' });
 
-    const supabase = createClient();
+    // No PKCE — see createMagicLinkClient(). The emailed link must open in any
+    // browser, so it cannot depend on a code_verifier stored in this one.
+    const supabase = createMagicLinkClient();
+
+    // Always carries a query string, which the email template relies on when it
+    // appends &token_hash=...&type=... to this URL.
     const redirectTo = `${getSiteUrl()}/auth/callback?next=${encodeURIComponent(next)}`;
 
     const { error } = await supabase.auth.signInWithOtp({
