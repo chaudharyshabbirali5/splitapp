@@ -52,9 +52,16 @@ export default async function GroupsPage() {
       ) : groups && groups.length > 0 ? (
         <ul className="divide-y divide-zinc-200 rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
           {groups.map((g) => (
-            <li key={g.id} className="flex items-center justify-between px-4 py-3">
-              <span className="font-medium">{g.name}</span>
-              <span className="text-xs uppercase tracking-wide text-zinc-500">{g.group_type}</span>
+            <li key={g.id}>
+              <Link
+                href={`/groups/${g.id}`}
+                className="flex items-center justify-between px-4 py-3 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900"
+              >
+                <span className="font-medium">{g.name}</span>
+                <span className="text-xs uppercase tracking-wide text-zinc-500">
+                  {g.group_type}
+                </span>
+              </Link>
             </li>
           ))}
         </ul>
@@ -67,14 +74,12 @@ export default async function GroupsPage() {
         </div>
       )}
 
-      <button
-        type="button"
-        disabled
-        title="Group creation arrives in the next step"
-        className="w-full rounded-md bg-zinc-900 px-4 py-3 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+      <Link
+        href="/groups/new"
+        className="block w-full rounded-md bg-zinc-900 px-4 py-3 text-center text-sm font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
       >
         Create group
-      </button>
+      </Link>
     </main>
   );
 }

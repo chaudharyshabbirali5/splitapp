@@ -3,17 +3,8 @@
 import { useEffect, useState } from 'react';
 import type { EmailOtpType } from '@supabase/supabase-js';
 
+import { safeNext } from '@/lib/safe-next';
 import { createCallbackClient } from '@/lib/supabase/client';
-
-/**
- * Only allow redirects to a path on this site. Without this check, a crafted
- * ?next=https://evil.example would turn the login flow into an open redirect.
- */
-function safeNext(raw: string | null): string {
-  if (!raw) return '/groups';
-  if (!raw.startsWith('/') || raw.startsWith('//')) return '/groups';
-  return raw;
-}
 
 /**
  * Completes sign-in from the emailed link.

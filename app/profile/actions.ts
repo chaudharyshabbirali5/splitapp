@@ -1,7 +1,9 @@
 'use server';
 
+import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 
+import { safeNext } from '@/lib/safe-next';
 import { createClient } from '@/lib/supabase/server';
 
 export type ProfileFormState = { status: 'idle' | 'saved'; error?: string };
@@ -20,9 +22,18 @@ export async function saveProfile(
   const displayName = String(formData.get('display_name') ?? '').trim();
   const upiRaw = String(formData.get('upi_id') ?? '').trim();
 
+  const rawNext = String(formData.get('next') ?? '');
+  const next = rawNext ? safeNext(rawNext) : null;
+
   // display_name is NOT NULL in the schema, so an empty value must be rejected
   // here rather than handed to Postgres.
   if (!displayName) return { status: 'idle', error: 'Please enter a display name.' };
+
+  // When the user was sent here by the group-creation gate, the UPI ID is the
+  // whole reason they were redirected, so it is required for that round trip.
+  if (next && !upiRaw) {
+    return { status: 'idle', error: 'Add a UPI ID so people can pay you back.' };
+  }
 
   const { error } = await supabase
     .from('profiles')
@@ -33,5 +44,9 @@ export async function saveProfile(
 
   revalidatePath('/profile');
   revalidatePath('/groups');
+
+  // redirect() throws internally, so it must stay outside any try/catch.
+  if (next) redirect(next);
+
   return { status: 'saved' };
 }
