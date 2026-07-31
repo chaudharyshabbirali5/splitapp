@@ -29,6 +29,21 @@ export function createClient() {
  * This client never holds a session: the callback route establishes it in
  * cookies, server-side.
  */
+/**
+ * Client for /auth/callback.
+ *
+ * Same cookie-backed client as createClient(), but with detectSessionInUrl
+ * turned off. Left on, supabase-js races the callback page for the URL fragment
+ * and clears it, so the page's own read can come up empty. The callback handles
+ * the fragment explicitly instead, which is deterministic and lets it report a
+ * real error message when something is wrong.
+ */
+export function createCallbackClient() {
+  return createBrowserClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { detectSessionInUrl: false },
+  });
+}
+
 export function createMagicLinkClient() {
   return createPlainClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: {
