@@ -27,13 +27,25 @@ export function parseRupeesToPaise(raw: string): number | null {
   return paise;
 }
 
-/** Renders paise as ₹ with two decimals and Indian digit grouping. */
-export function formatPaise(paise: number): string {
-  const sign = paise < 0 ? '-' : '';
-  const abs = Math.abs(paise);
-  const rupees = Math.trunc(abs / 100);
-  const rest = abs % 100;
-  return `${sign}₹${rupees.toLocaleString('en-IN')}.${String(rest).padStart(2, '0')}`;
+/**
+ * Renders paise as ₹ with two decimals and Indian digit grouping.
+ *
+ * Accepts bigint so balance values, which are read as bigint to avoid any
+ * float rounding, can be printed without converting back through Number.
+ */
+export function formatPaise(paise: number | bigint): string {
+  const negative = paise < 0;
+  const abs = typeof paise === 'bigint' ? (negative ? -paise : paise) : Math.abs(paise);
+
+  const rupees = typeof abs === 'bigint' ? abs / 100n : Math.trunc(abs / 100);
+  const rest = typeof abs === 'bigint' ? abs % 100n : abs % 100;
+
+  const grouped =
+    typeof rupees === 'bigint'
+      ? BigInt(rupees).toLocaleString('en-IN')
+      : rupees.toLocaleString('en-IN');
+
+  return `${negative ? '-' : ''}₹${grouped}.${String(rest).padStart(2, '0')}`;
 }
 
 /** Plain rupees string for prefilling a number input, e.g. 10050 -> "100.50". */

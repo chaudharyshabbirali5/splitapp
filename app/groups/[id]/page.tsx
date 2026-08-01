@@ -74,6 +74,14 @@ export default async function GroupPage({ params }: { params: Promise<{ id: stri
         </p>
       </header>
 
+      <Link
+        href={`/groups/${group.id}/balances`}
+        className="flex items-center justify-between gap-3 rounded-lg border border-zinc-200 px-4 py-3 transition-colors hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
+      >
+        <span className="text-sm font-medium">Balances</span>
+        <span className="text-sm text-zinc-500">Who owes whom &rarr;</span>
+      </Link>
+
       <section className="space-y-3">
         <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-500">Members</h2>
 
