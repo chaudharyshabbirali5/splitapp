@@ -10,6 +10,10 @@ import {
 import { formatPaise } from '@/lib/money';
 import { createClient } from '@/lib/supabase/server';
 
+import { ConfirmButton } from './confirm-button';
+import { confirmSettlement } from './settle-actions';
+import { SettleRow } from './settle-row';
+
 export const dynamic = 'force-dynamic';
 
 export default async function BalancesPage({ params }: { params: Promise<{ id: string }> }) {
@@ -28,6 +32,13 @@ export default async function BalancesPage({ params }: { params: Promise<{ id: s
     .eq('id', id)
     .maybeSingle();
   if (!group) notFound();
+
+  const { data: pendingSettlements } = await supabase
+    .from('settlements')
+    .select('id, from_member, to_member, amount_minor, created_at')
+    .eq('group_id', id)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false });
 
   const [{ data: members }, balances, { count: expenseCount }] = await Promise.all([
     supabase
@@ -88,6 +99,10 @@ export default async function BalancesPage({ params }: { params: Promise<{ id: s
   const payments = simplifyDebts(nets);
   const hasExpenses = (expenseCount ?? 0) > 0;
 
+  // Which member row is the signed-in user? Only that row gets pay buttons —
+  // you cannot settle, or claim to have settled, somebody else's debt.
+  const myMemberId = (members ?? []).find((m) => m.user_id === user.id)?.id ?? null;
+
   return (
     <Shell groupId={id} groupName={group.name}>
       {!hasExpenses && (
@@ -146,6 +161,56 @@ export default async function BalancesPage({ params }: { params: Promise<{ id: s
         </div>
       </section>
 
+      {(pendingSettlements ?? []).length > 0 && (
+        <section className="space-y-3">
+          <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-500">
+            Pending payments
+          </h2>
+
+          <ul className="divide-y divide-zinc-200 rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+            {(pendingSettlements ?? []).map((s) => {
+              const from = memberById.get(s.from_member);
+              const to = memberById.get(s.to_member);
+              const iAmPayee = to?.user_id === user.id;
+              const iAmPayer = from?.user_id === user.id;
+
+              return (
+                <li key={s.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                  <span className="min-w-0 text-sm">
+                    <span className="font-medium">
+                      {iAmPayer ? 'You' : (from?.display_name ?? 'Someone')}
+                    </span>{' '}
+                    marked {formatPaise(toPaise(s.amount_minor))} paid to{' '}
+                    <span className="font-medium">
+                      {iAmPayee ? 'you' : (to?.display_name ?? 'someone')}
+                    </span>
+                    <span className="mt-0.5 block text-xs text-zinc-500">
+                      {iAmPayee
+                        ? 'Confirm once the money has arrived.'
+                        : `Waiting for ${to?.display_name ?? 'them'} to confirm — this does not
+                           change balances yet.`}
+                    </span>
+                  </span>
+
+                  {iAmPayee ? (
+                    <ConfirmButton action={confirmSettlement.bind(null, id, s.id)} />
+                  ) : (
+                    <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                      pending
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+
+          <p className="text-xs text-zinc-500">
+            Pending payments are ignored by the balances above until the person who was
+            paid confirms them.
+          </p>
+        </section>
+      )}
+
       <section className="space-y-3">
         <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-500">
           Who pays whom
@@ -161,25 +226,44 @@ export default async function BalancesPage({ params }: { params: Promise<{ id: s
         ) : (
           <>
             <ul className="divide-y divide-zinc-200 rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
-              {payments.map((p, i) => (
-                <li
-                  key={`${p.from.memberId}-${p.to.memberId}-${i}`}
-                  className="flex items-center justify-between gap-3 px-4 py-3"
-                >
-                  <span className="min-w-0 text-sm">
-                    <span className="font-medium">{p.from.displayName}</span> pays{' '}
-                    <span className="font-medium">{p.to.displayName}</span>
-                    {p.to.upiId && (
-                      <span className="mt-0.5 block truncate text-xs text-zinc-500">
-                        {p.to.upiId}
+              {payments.map((p, i) => {
+                const isMine = myMemberId !== null && p.from.memberId === myMemberId;
+                return (
+                  <li key={`${p.from.memberId}-${p.to.memberId}-${i}`} className="px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="min-w-0 text-sm">
+                        <span className="font-medium">
+                          {isMine ? 'You' : p.from.displayName}
+                        </span>{' '}
+                        {isMine ? 'pay' : 'pays'}{' '}
+                        <span className="font-medium">{p.to.displayName}</span>
+                        {p.to.upiId && (
+                          <span className="mt-0.5 block truncate text-xs text-zinc-500">
+                            {p.to.upiId}
+                          </span>
+                        )}
                       </span>
+                      <span className="shrink-0 text-sm font-medium tabular-nums">
+                        {formatPaise(p.amountMinor)}
+                      </span>
+                    </div>
+
+                    {isMine && (
+                      <div className="mt-3">
+                        <SettleRow
+                          groupId={group.id}
+                          groupName={group.name}
+                          fromMemberId={p.from.memberId}
+                          toMemberId={p.to.memberId}
+                          payeeName={p.to.displayName}
+                          payeeUpiId={p.to.upiId}
+                          amountMinor={p.amountMinor.toString()}
+                        />
+                      </div>
                     )}
-                  </span>
-                  <span className="shrink-0 text-sm font-medium tabular-nums">
-                    {formatPaise(p.amountMinor)}
-                  </span>
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ul>
             <p className="text-xs text-zinc-500">
               The shortest set of payments that clears everyone —{' '}

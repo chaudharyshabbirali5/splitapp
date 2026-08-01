@@ -48,7 +48,24 @@ export function formatPaise(paise: number | bigint): string {
   return `${negative ? '-' : ''}₹${grouped}.${String(rest).padStart(2, '0')}`;
 }
 
+/**
+ * Plain rupees string with exactly two decimals and no symbol or grouping,
+ * e.g. 10001 -> "100.01".
+ *
+ * Built by integer division and modulo, never by dividing into a float, so the
+ * UPI `am` parameter and prefilled inputs carry the exact paise.
+ */
+export function paiseToAmountString(paise: number | bigint): string {
+  const negative = paise < 0;
+  const abs = typeof paise === 'bigint' ? (negative ? -paise : paise) : Math.abs(paise);
+
+  const rupees = typeof abs === 'bigint' ? abs / 100n : Math.trunc(abs / 100);
+  const rest = typeof abs === 'bigint' ? abs % 100n : abs % 100;
+
+  return `${negative ? '-' : ''}${rupees}.${String(rest).padStart(2, '0')}`;
+}
+
 /** Plain rupees string for prefilling a number input, e.g. 10050 -> "100.50". */
-export function paiseToRupeeInput(paise: number): string {
-  return `${Math.trunc(paise / 100)}.${String(paise % 100).padStart(2, '0')}`;
+export function paiseToRupeeInput(paise: number | bigint): string {
+  return paiseToAmountString(paise);
 }
