@@ -5,6 +5,7 @@ import { formatPaise } from '@/lib/money';
 import { createClient } from '@/lib/supabase/server';
 
 import { AddMemberForm } from './add-member-form';
+import { ArchiveGroup } from './archive-group';
 import { ShareLink } from './share-link';
 
 export const dynamic = 'force-dynamic';
@@ -32,9 +33,12 @@ export default async function GroupPage({ params }: { params: Promise<{ id: stri
     .from('groups')
     .select('id, name, group_type, join_code, created_by')
     .eq('id', id)
+    .is('archived_at', null) // an archived group behaves as if it is gone
     .maybeSingle();
 
   if (!group) notFound();
+
+  const isCreator = group.created_by === user.id;
 
   const [{ data: members, error: membersError }, { data: expenses, error: expensesError }] =
     await Promise.all([
@@ -191,6 +195,17 @@ export default async function GroupPage({ params }: { params: Promise<{ id: stri
         <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-500">Invite</h2>
         <ShareLink joinCode={group.join_code} />
       </section>
+
+      {/* Creator-only. archive_group() and the groups_update policy both enforce
+          this again server-side, so hiding it here is convenience, not security. */}
+      {isCreator && (
+        <section className="space-y-3 border-t border-zinc-200 pt-6 dark:border-zinc-800">
+          <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-500">
+            Danger zone
+          </h2>
+          <ArchiveGroup groupId={group.id} groupName={group.name} />
+        </section>
+      )}
     </main>
   );
 }

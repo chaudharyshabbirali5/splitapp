@@ -18,6 +18,7 @@ export default async function GroupsPage() {
   const { data: groups, error } = await supabase
     .from('groups')
     .select('id, name, group_type, created_at')
+    .is('archived_at', null) // archived groups are hidden, not deleted
     .order('created_at', { ascending: false });
 
   return (

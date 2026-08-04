@@ -21,6 +21,7 @@ export default async function NewExpensePage({ params }: { params: Promise<{ id:
     .from('groups')
     .select('id, name')
     .eq('id', id)
+    .is('archived_at', null) // no new expenses in an archived group
     .maybeSingle();
   if (!group) notFound();
 

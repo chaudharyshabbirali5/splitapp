@@ -34,6 +34,16 @@ export default async function EditExpensePage({
 
   if (!expense || expense.is_deleted) notFound();
 
+  // Reads expenses rather than groups, so the archived state needs its own
+  // check. The database refuses the write too, via the archived-group trigger.
+  const { data: liveGroup } = await supabase
+    .from('groups')
+    .select('id')
+    .eq('id', id)
+    .is('archived_at', null)
+    .maybeSingle();
+  if (!liveGroup) notFound();
+
   const [{ data: members }, { data: splits }] = await Promise.all([
     supabase
       .from('group_members')

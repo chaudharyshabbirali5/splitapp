@@ -30,6 +30,7 @@ export default async function BalancesPage({ params }: { params: Promise<{ id: s
     .from('groups')
     .select('id, name')
     .eq('id', id)
+    .is('archived_at', null) // archived groups are unreachable
     .maybeSingle();
   if (!group) notFound();
 

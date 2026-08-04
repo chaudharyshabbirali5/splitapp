@@ -39,6 +39,16 @@ export default async function ExpenseDetailPage({
 
   if (!expense || expense.is_deleted) notFound();
 
+  // This page reads expenses, not groups, so the archived state has to be
+  // checked explicitly rather than falling out of the group query.
+  const { data: liveGroup } = await supabase
+    .from('groups')
+    .select('id')
+    .eq('id', id)
+    .is('archived_at', null)
+    .maybeSingle();
+  if (!liveGroup) notFound();
+
   const [{ data: members }, { data: splits, error: splitsError }] = await Promise.all([
     supabase
       .from('group_members')
