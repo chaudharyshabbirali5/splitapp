@@ -64,15 +64,12 @@ export default async function GroupPage({ params }: { params: Promise<{ id: stri
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-8 p-6 sm:p-10">
-      <header className="space-y-1">
-        <Link
-          href="/groups"
-          className="text-sm underline underline-offset-4 text-zinc-600 hover:text-black dark:text-zinc-400 dark:hover:text-white"
-        >
+      <header className="space-y-1 border-b border-rule pb-4">
+        <Link href="/groups" className="link-back">
           &larr; All groups
         </Link>
-        <h1 className="text-2xl font-semibold tracking-tight">{group.name}</h1>
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
+        <h1 className="page-title pt-1">{group.name}</h1>
+        <p className="text-sm text-ink-soft">
           {TYPE_LABEL[group.group_type] ?? group.group_type} &middot; {(members ?? []).length}{' '}
           {(members ?? []).length === 1 ? 'member' : 'members'}
         </p>
@@ -80,49 +77,39 @@ export default async function GroupPage({ params }: { params: Promise<{ id: stri
 
       <Link
         href={`/groups/${group.id}/balances`}
-        className="flex items-center justify-between gap-3 rounded-lg border border-zinc-200 px-4 py-3 transition-colors hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
+        className="ledger ledger-row ledger-link"
       >
         <span className="text-sm font-medium">Balances</span>
-        <span className="text-sm text-zinc-500">Who owes whom &rarr;</span>
+        <span className="khata-label">Who owes whom &rarr;</span>
       </Link>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-500">Members</h2>
+        <h2 className="khata-label">Members</h2>
 
         {membersError ? (
-          <p className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
-            Could not load members: {membersError.message}
-          </p>
+          <p className="notice-error">Could not load members: {membersError.message}</p>
         ) : (
-          <ul className="divide-y divide-zinc-200 rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+          <ul className="ledger">
             {[...joined, ...placeholders].map((m) => (
-              <li key={m.id} className="flex items-center justify-between gap-3 px-4 py-3">
+              <li key={m.id} className="ledger-row">
                 <div className="min-w-0">
                   <p className="truncate font-medium">
                     {m.display_name}
                     {m.user_id === user.id && (
-                      <span className="ml-2 text-xs font-normal text-zinc-500">you</span>
+                      <span className="ml-2 text-xs font-normal text-ink-faint">you</span>
                     )}
                   </p>
-                  <p className="truncate text-xs text-zinc-500">
+                  <p className="figure truncate text-xs text-ink-faint">
                     {m.upi_id ?? 'No UPI ID'}
                   </p>
                 </div>
 
                 <div className="flex shrink-0 items-center gap-2">
-                  {m.role === 'admin' && (
-                    <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
-                      admin
-                    </span>
-                  )}
+                  {m.role === 'admin' && <span className="chip chip-quiet">admin</span>}
                   {m.user_id === null ? (
-                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-300">
-                      not joined yet
-                    </span>
+                    <span className="chip chip-pending">not joined</span>
                   ) : (
-                    <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-800 dark:bg-green-950 dark:text-green-300">
-                      joined
-                    </span>
+                    <span className="chip chip-joined">joined</span>
                   )}
                 </div>
               </li>
@@ -133,38 +120,34 @@ export default async function GroupPage({ params }: { params: Promise<{ id: stri
 
       <section className="space-y-3">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-500">Expenses</h2>
+          <h2 className="khata-label">Expenses</h2>
           <Link
             href={`/groups/${group.id}/expenses/new`}
-            className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+            className="btn btn-primary btn-sm"
           >
             Add expense
           </Link>
         </div>
 
         {expensesError ? (
-          <p className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
-            Could not load expenses: {expensesError.message}
-          </p>
+          <p className="notice-error">Could not load expenses: {expensesError.message}</p>
         ) : (expenses ?? []).length === 0 ? (
-          <p className="rounded-lg border border-dashed border-zinc-300 px-6 py-10 text-center text-sm text-zinc-600 dark:border-zinc-700 dark:text-zinc-400">
-            No expenses yet.
-          </p>
+          <p className="empty text-sm text-ink-soft">No expenses yet.</p>
         ) : (
-          <ul className="divide-y divide-zinc-200 rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+          <ul className="ledger">
             {(expenses ?? []).map((e) => {
               const ways = (e.expense_splits ?? []).length;
               return (
                 <li key={e.id}>
                   <Link
                     href={`/groups/${group.id}/expenses/${e.id}`}
-                    className="flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900"
+                    className="ledger-row ledger-link"
                   >
                     <div className="min-w-0">
                       <p className="truncate font-medium">
                         {e.description || 'Expense'}
                       </p>
-                      <p className="truncate text-xs text-zinc-500">
+                      <p className="truncate text-xs text-ink-faint">
                         {memberName.get(e.paid_by) ?? 'Unknown'} paid &middot; split {ways}{' '}
                         {ways === 1 ? 'way' : 'ways'} &middot;{' '}
                         {new Date(e.created_at).toLocaleDateString('en-IN', {
@@ -173,7 +156,7 @@ export default async function GroupPage({ params }: { params: Promise<{ id: stri
                         })}
                       </p>
                     </div>
-                    <span className="shrink-0 font-medium tabular-nums">
+                    <span className="figure shrink-0 font-medium">
                       {formatPaise(Number(e.amount_minor))}
                     </span>
                   </Link>
@@ -185,24 +168,20 @@ export default async function GroupPage({ params }: { params: Promise<{ id: stri
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-500">
-          Add someone not on SplitApp
-        </h2>
+        <h2 className="khata-label">Add someone not on SplitApp</h2>
         <AddMemberForm groupId={group.id} />
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-500">Invite</h2>
+        <h2 className="khata-label">Invite</h2>
         <ShareLink joinCode={group.join_code} />
       </section>
 
       {/* Creator-only. archive_group() and the groups_update policy both enforce
           this again server-side, so hiding it here is convenience, not security. */}
       {isCreator && (
-        <section className="space-y-3 border-t border-zinc-200 pt-6 dark:border-zinc-800">
-          <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-500">
-            Danger zone
-          </h2>
+        <section className="space-y-3 border-t border-rule pt-6">
+          <h2 className="khata-label">Danger zone</h2>
           <ArchiveGroup groupId={group.id} groupName={group.name} />
         </section>
       )}

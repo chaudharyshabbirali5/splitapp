@@ -61,7 +61,7 @@ export default async function EditExpensePage({
 
   return (
     <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-6 p-6 sm:p-10">
-      <h1 className="text-2xl font-semibold tracking-tight">Edit expense</h1>
+      <h1 className="page-title border-b border-rule pb-4">Edit expense</h1>
 
       <ExpenseForm
         groupId={id}
@@ -76,7 +76,7 @@ export default async function EditExpensePage({
         }}
       />
 
-      <div className="border-t border-zinc-200 pt-6 dark:border-zinc-800">
+      <div className="border-t border-rule pt-6">
         <DeleteExpense action={softDeleteExpense.bind(null, id, expenseId)} />
       </div>
     </main>

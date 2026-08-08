@@ -19,7 +19,7 @@ function SubmitButton() {
     <button
       type="submit"
       disabled={pending}
-      className="w-full rounded-md bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+      className="btn btn-primary btn-block"
     >
       {pending ? 'Creating…' : 'Create group'}
     </button>
@@ -32,7 +32,7 @@ export function CreateGroupForm() {
   return (
     <form action={formAction} className="space-y-5">
       <div className="space-y-1.5">
-        <label htmlFor="name" className="block text-sm font-medium">
+        <label htmlFor="name" className="field-label">
           Group name
         </label>
         <input
@@ -42,18 +42,15 @@ export function CreateGroupForm() {
           autoFocus
           maxLength={80}
           placeholder="Goa Trip"
-          className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:focus:border-zinc-100"
+          className="field"
         />
       </div>
 
       <fieldset className="space-y-2">
-        <legend className="text-sm font-medium">Type</legend>
+        <legend className="field-label">Type</legend>
         <div className="grid grid-cols-4 gap-2">
           {TYPES.map((t, i) => (
-            <label
-              key={t.value}
-              className="flex cursor-pointer items-center justify-center rounded-md border border-zinc-300 px-2 py-2 text-sm has-checked:border-zinc-900 has-checked:bg-zinc-900 has-checked:text-white dark:border-zinc-700 dark:has-checked:border-zinc-100 dark:has-checked:bg-zinc-100 dark:has-checked:text-zinc-900"
-            >
+            <label key={t.value} className="segment">
               <input
                 type="radio"
                 name="group_type"
@@ -67,14 +64,11 @@ export function CreateGroupForm() {
         </div>
       </fieldset>
 
-      {state.error && <p className="text-sm text-red-600 dark:text-red-400">{state.error}</p>}
+      {state.error && <p className="text-sm text-debit">{state.error}</p>}
 
       <SubmitButton />
 
-      <Link
-        href="/groups"
-        className="block text-center text-sm underline underline-offset-4 text-zinc-600 hover:text-black dark:text-zinc-400 dark:hover:text-white"
-      >
+      <Link href="/groups" className="link block text-center text-sm">
         Cancel
       </Link>
     </form>

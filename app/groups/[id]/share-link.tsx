@@ -28,20 +28,18 @@ export function ShareLink({ joinCode }: { joinCode: string }) {
       <button
         type="button"
         onClick={copy}
-        className="w-full rounded-md border border-zinc-300 px-4 py-2.5 text-sm font-medium transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+        className="btn btn-quiet btn-block"
       >
         {copied ? 'Link copied' : 'Share invite link'}
       </button>
 
       {fallback && (
-        <p className="break-all rounded-md bg-zinc-100 px-3 py-2 text-xs text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
+        <p className="figure break-all bg-sunken px-3 py-2 text-xs text-ink-soft">
           {fallback}
         </p>
       )}
 
-      <p className="text-xs text-zinc-500">
-        Anyone signed in who opens this link joins the group.
-      </p>
+      <p className="hint">Anyone signed in who opens this link joins the group.</p>
     </div>
   );
 }

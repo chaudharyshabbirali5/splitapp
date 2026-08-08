@@ -1,17 +1,23 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { IBM_Plex_Mono, Instrument_Sans } from "next/font/google";
 import "./globals.css";
 
 import { Pwa } from "./pwa";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Instrument Sans for everything you read, IBM Plex Mono for everything you
+// count. The mono face carries figures, labels and codes — it is what makes a
+// column of rupee amounts line up and read as a ledger rather than as text.
+const ui = Instrument_Sans({
+  variable: "--font-ui",
   subsets: ["latin"],
+  display: "swap",
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const figure = IBM_Plex_Mono({
+  variable: "--font-figure",
   subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -22,10 +28,13 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     title: "SplitApp",
-    statusBarStyle: "black-translucent",
+    // The paper ground is light, so a translucent bar would put white status
+    // text on it. "default" keeps the normal, legible bar.
+    statusBarStyle: "default",
   },
   icons: {
     icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
       { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
       { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
     ],
@@ -34,9 +43,12 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  // Matches the manifest's theme_color, so the Android status bar and the
-  // standalone splash screen agree with the icon background.
-  themeColor: "#18181b",
+  // Tracks the page ground in each theme, so the browser/status bar reads as an
+  // extension of the paper rather than a band sitting on top of it.
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f7f8f4" },
+    { media: "(prefers-color-scheme: dark)", color: "#12161a" },
+  ],
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
@@ -50,7 +62,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${ui.variable} ${figure.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         {children}

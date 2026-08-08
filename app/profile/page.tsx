@@ -32,11 +32,9 @@ export default async function ProfilePage({
 
   return (
     <main className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center gap-6 p-6 sm:p-10">
-      <div className="space-y-1.5">
-        <h1 className="text-2xl font-semibold tracking-tight">
-          {next ? 'Complete your profile' : 'Your profile'}
-        </h1>
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
+      <div className="space-y-1.5 border-b border-rule pb-4">
+        <h1 className="page-title">{next ? 'Complete your profile' : 'Your profile'}</h1>
+        <p className="text-sm text-ink-soft">
           {next
             ? 'Before you create a group, tell people who you are and how to pay you back.'
             : 'Tell people who you are before you start splitting expenses.'}
@@ -44,9 +42,7 @@ export default async function ProfilePage({
       </div>
 
       {error ? (
-        <p className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
-          Could not load your profile: {error.message}
-        </p>
+        <p className="notice-error">Could not load your profile: {error.message}</p>
       ) : (
         <ProfileForm
           displayName={profile?.display_name ?? ''}

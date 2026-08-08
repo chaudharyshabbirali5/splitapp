@@ -1,26 +1,415 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* ─────────────────────────────────────────────────────────────────────────
+   Khata — the visual language of a shopkeeper's ledger.
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+   Three rules hold the whole thing together:
+
+   1. Hairline rules do the work that cards, borders and shadows usually do.
+      A list of money is a ruled column, not a stack of boxes.
+   2. Every rupee figure is set in the mono face with tabular figures, so
+      columns of money line up down the page.
+   3. --credit and --debit are RESERVED. Green means somebody gets money back,
+      red means somebody owes. Neither is ever used for decoration, branding,
+      or "delete". Structural colour is ink, rule, or brand.
+   ───────────────────────────────────────────────────────────────────────── */
+
+:root {
+  color-scheme: light;
+
+  --ground: #f7f8f4;      /* the page — paper, with a faint green bias */
+  --surface: #ffffff;     /* things you type into */
+  --sunken: #eef0ea;      /* totals, hover, quiet fills */
+
+  --ink: #1b2430;
+  --ink-soft: #5b6675;
+  --ink-faint: #8c95a1;
+
+  --rule: #dcdfd6;        /* hairline between entries */
+  --rule-strong: #b9bfb2; /* borders you're meant to notice */
+
+  --brand: #23405e;
+  --brand-hover: #1a3149;
+  --brand-soft: #e7ecf2;
+
+  --credit: #1f6b4a;      /* reserved: gets money back */
+  --debit: #9b2c2c;       /* reserved: owes money */
+  --debit-soft: #f7ebe9;
+  --pending: #7a5610;
+  --pending-soft: #f3ecdc;
+
+  /* Text placed on a saturated fill (brand / credit / debit buttons). */
+  --on-fill: #f7f8f4;
+
+  --radius: 2px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    color-scheme: dark;
+
+    /* Not an inversion: the dark ground keeps the same slight green-grey
+       bias as the paper, so the brand and the reserved colours still read
+       as the same hues rather than washing out. */
+    --ground: #12161a;
+    --surface: #181d22;
+    --sunken: #1e242a;
+
+    --ink: #e7eae4;
+    --ink-soft: #9aa4ae;
+    --ink-faint: #6d7883;
+
+    --rule: #2a3138;
+    --rule-strong: #3f4851;
+
+    --brand: #8fb2d4;
+    --brand-hover: #a9c6e0;
+    --brand-soft: #1c2733;
+
+    --credit: #63c295;
+    --debit: #e08c86;
+    --debit-soft: #2b1d1c;
+    --pending: #d9ab55;
+    --pending-soft: #2a2416;
+
+    --on-fill: #101418;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@theme inline {
+  --color-ground: var(--ground);
+  --color-surface: var(--surface);
+  --color-sunken: var(--sunken);
+
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-faint: var(--ink-faint);
+
+  --color-rule: var(--rule);
+  --color-rule-strong: var(--rule-strong);
+
+  --color-brand: var(--brand);
+  --color-brand-soft: var(--brand-soft);
+
+  --color-credit: var(--credit);
+  --color-debit: var(--debit);
+  --color-pending: var(--pending);
+
+  --font-sans: var(--font-ui);
+  --font-mono: var(--font-figure);
+}
+
+@layer base {
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--font-ui), ui-sans-serif, system-ui, sans-serif;
+  }
+
+  ::selection {
+    background: var(--brand-soft);
+    color: var(--ink);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+}
+
+@layer components {
+  /* ── Type roles ──────────────────────────────────────────────────────── */
+
+  .page-title {
+    font-size: 1.5rem;
+    line-height: 1.15;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+
+  /* The column heading in a ledger: small, spaced, never shouting. */
+  .khata-label {
+    font-family: var(--font-figure), ui-monospace, monospace;
+    font-size: 0.6875rem;
+    line-height: 1;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  /* Every rupee amount on screen goes through this. */
+  .figure {
+    font-family: var(--font-figure), ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+
+  .hint {
+    font-size: 0.75rem;
+    line-height: 1.45;
+    color: var(--ink-faint);
+  }
+
+  /* ── The ledger ──────────────────────────────────────────────────────── */
+
+  .ledger {
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .ledger > * + * {
+    border-top: 1px solid var(--rule);
+  }
+
+  .ledger-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.8rem 0.625rem;
+  }
+
+  .ledger-link {
+    transition: background-color 0.12s ease;
+  }
+
+  .ledger-link:hover {
+    background: var(--sunken);
+  }
+
+  /* A double rule is the accountant's "this is the final figure". */
+  .ledger-total {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.8rem 0.625rem;
+    border-top: 3px double var(--rule-strong);
+    background: var(--sunken);
+  }
+
+  .ledger-total-bad {
+    border-top-color: var(--debit);
+    background: var(--debit-soft);
+  }
+
+  /* Nothing written on this page yet. */
+  .empty {
+    border: 1px dashed var(--rule-strong);
+    padding: 2.5rem 1.5rem;
+    text-align: center;
+  }
+
+  /* ── Controls ────────────────────────────────────────────────────────── */
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border: 1px solid transparent;
+    border-radius: var(--radius);
+    padding: 0.625rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    line-height: 1.25rem;
+    cursor: pointer;
+    transition:
+      background-color 0.12s ease,
+      border-color 0.12s ease,
+      color 0.12s ease;
+  }
+
+  .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .btn-block {
+    width: 100%;
+  }
+
+  .btn-sm {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.8125rem;
+  }
+
+  .btn-primary {
+    background: var(--brand);
+    color: var(--on-fill);
+  }
+
+  .btn-primary:hover:not(:disabled) {
+    background: var(--brand-hover);
+  }
+
+  .btn-quiet {
+    border-color: var(--rule-strong);
+    color: var(--ink);
+  }
+
+  .btn-quiet:hover:not(:disabled) {
+    background: var(--sunken);
+  }
+
+  /* Confirming money received is the one place green belongs on a control. */
+  .btn-credit {
+    background: var(--credit);
+    color: var(--on-fill);
+  }
+
+  .btn-credit:hover:not(:disabled) {
+    filter: brightness(1.08);
+  }
+
+  /* Destructive. Outlined until confirmed, solid once it means it. */
+  .btn-danger {
+    border-color: var(--debit);
+    color: var(--debit);
+  }
+
+  .btn-danger:hover:not(:disabled) {
+    background: var(--debit-soft);
+  }
+
+  .btn-danger-solid {
+    background: var(--debit);
+    color: var(--on-fill);
+  }
+
+  .btn-danger-solid:hover:not(:disabled) {
+    filter: brightness(1.08);
+  }
+
+  .btn-dead {
+    background: var(--sunken);
+    color: var(--ink-faint);
+    cursor: not-allowed;
+  }
+
+  .field {
+    width: 100%;
+    border: 1px solid var(--rule-strong);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--ink);
+    padding: 0.5rem 0.625rem;
+    font-size: 0.875rem;
+    outline: none;
+  }
+
+  .field::placeholder {
+    color: var(--ink-faint);
+  }
+
+  .field:focus {
+    border-color: var(--brand);
+    box-shadow: inset 0 0 0 1px var(--brand);
+  }
+
+  .field-label {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+
+  /* Amounts are typed in the same face they're read back in. */
+  .field-amount {
+    font-family: var(--font-figure), ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Segmented picker (group type). Selected = inked in. */
+  .segment {
+    display: flex;
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--rule-strong);
+    border-radius: var(--radius);
+    padding: 0.5rem;
+    font-size: 0.875rem;
+    transition:
+      background-color 0.12s ease,
+      border-color 0.12s ease,
+      color 0.12s ease;
+  }
+
+  .segment:has(:checked) {
+    background: var(--brand);
+    border-color: var(--brand);
+    color: var(--on-fill);
+  }
+
+  /* ── Small pieces ────────────────────────────────────────────────────── */
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    border-radius: var(--radius);
+    padding: 0.125rem 0.375rem;
+    font-family: var(--font-figure), ui-monospace, monospace;
+    font-size: 0.625rem;
+    line-height: 1rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .chip-quiet {
+    background: var(--sunken);
+    color: var(--ink-soft);
+  }
+
+  .chip-joined {
+    background: var(--brand-soft);
+    color: var(--brand);
+  }
+
+  .chip-pending {
+    background: var(--pending-soft);
+    color: var(--pending);
+  }
+
+  .notice-error {
+    border-left: 3px solid var(--debit);
+    background: var(--debit-soft);
+    padding: 0.75rem 0.875rem;
+    font-size: 0.875rem;
+    color: var(--debit);
+  }
+
+  .link {
+    color: var(--ink-soft);
+    text-decoration: underline;
+    text-decoration-color: var(--rule-strong);
+    text-underline-offset: 3px;
+    transition: color 0.12s ease;
+  }
+
+  .link:hover {
+    color: var(--ink);
+    text-decoration-color: currentColor;
+  }
+
+  /* Back links read as a ledger annotation, not as body copy. */
+  .link-back {
+    display: inline-block;
+    font-family: var(--font-figure), ui-monospace, monospace;
+    font-size: 0.6875rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    transition: color 0.12s ease;
+  }
+
+  .link-back:hover {
+    color: var(--ink);
+  }
 }

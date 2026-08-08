@@ -18,7 +18,7 @@ function SubmitButton({ label }: { label: string }) {
     <button
       type="submit"
       disabled={pending}
-      className="w-full rounded-md bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+      className="btn btn-primary btn-block"
     >
       {pending ? 'Saving…' : label}
     </button>
@@ -63,11 +63,11 @@ export function ExpenseForm({
   return (
     <form action={formAction} className="space-y-6">
       <div className="space-y-1.5">
-        <label htmlFor="amount" className="block text-sm font-medium">
+        <label htmlFor="amount" className="field-label">
           Amount
         </label>
         <div className="flex items-center gap-2">
-          <span className="text-lg text-zinc-500">₹</span>
+          <span className="figure text-lg text-ink-faint">₹</span>
           <input
             id="amount"
             name="amount"
@@ -76,14 +76,14 @@ export function ExpenseForm({
             inputMode="decimal"
             defaultValue={initial?.amount ?? ''}
             placeholder="0.00"
-            className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:focus:border-zinc-100"
+            className="field field-amount text-base"
           />
         </div>
-        <p className="text-xs text-zinc-500">Rupees, up to two decimals.</p>
+        <p className="hint">Rupees, up to two decimals.</p>
       </div>
 
       <div className="space-y-1.5">
-        <label htmlFor="description" className="block text-sm font-medium">
+        <label htmlFor="description" className="field-label">
           Description
         </label>
         <input
@@ -92,12 +92,12 @@ export function ExpenseForm({
           maxLength={140}
           defaultValue={initial?.description ?? ''}
           placeholder="Beach shack dinner"
-          className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:focus:border-zinc-100"
+          className="field"
         />
       </div>
 
       <div className="space-y-1.5">
-        <label htmlFor="paid_by" className="block text-sm font-medium">
+        <label htmlFor="paid_by" className="field-label">
           Paid by
         </label>
         <select
@@ -105,7 +105,7 @@ export function ExpenseForm({
           name="paid_by"
           required
           defaultValue={initial?.paidBy ?? members[0]?.id ?? ''}
-          className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:focus:border-zinc-100"
+          className="field"
         >
           {members.map((m) => (
             <option key={m.id} value={m.id}>
@@ -114,35 +114,33 @@ export function ExpenseForm({
             </option>
           ))}
         </select>
-        <p className="text-xs text-zinc-500">
-          Someone who hasn&rsquo;t joined can still be the payer.
-        </p>
+        <p className="hint">Someone who hasn&rsquo;t joined can still be the payer.</p>
       </div>
 
       <fieldset className="space-y-2">
-        <legend className="text-sm font-medium">
+        <legend className="field-label">
           Split between{' '}
-          <span className="font-normal text-zinc-500">
+          <span className="font-normal text-ink-faint">
             ({checked.size} {checked.size === 1 ? 'person' : 'people'}, equally)
           </span>
         </legend>
 
-        <ul className="divide-y divide-zinc-200 rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+        <ul className="ledger">
           {members.map((m) => (
             <li key={m.id}>
-              <label className="flex cursor-pointer items-center gap-3 px-4 py-2.5">
+              <label className="flex cursor-pointer items-center gap-3 px-2.5 py-2.5">
                 <input
                   type="checkbox"
                   name="participants"
                   value={m.id}
                   checked={checked.has(m.id)}
                   onChange={() => toggle(m.id)}
-                  className="size-4 accent-zinc-900 dark:accent-zinc-100"
+                  className="size-4 accent-brand"
                 />
                 <span className="text-sm">
                   {m.display_name}
                   {m.isPlaceholder && (
-                    <span className="ml-2 text-xs text-zinc-500">not joined yet</span>
+                    <span className="ml-2 text-xs text-ink-faint">not joined yet</span>
                   )}
                 </span>
               </label>
@@ -151,24 +149,19 @@ export function ExpenseForm({
         </ul>
 
         {checked.size === 0 && (
-          <p className="text-sm text-red-600 dark:text-red-400">
-            Tick at least one person.
-          </p>
+          <p className="text-sm text-debit">Tick at least one person.</p>
         )}
-        <p className="text-xs text-zinc-500">
+        <p className="hint">
           Any paise left over from an uneven split go to the people at the top of this
           list, so the shares always add up to the exact total.
         </p>
       </fieldset>
 
-      {state.error && <p className="text-sm text-red-600 dark:text-red-400">{state.error}</p>}
+      {state.error && <p className="text-sm text-debit">{state.error}</p>}
 
       <SubmitButton label={submitLabel} />
 
-      <Link
-        href={`/groups/${groupId}`}
-        className="block text-center text-sm underline underline-offset-4 text-zinc-600 hover:text-black dark:text-zinc-400 dark:hover:text-white"
-      >
+      <Link href={`/groups/${groupId}`} className="link block text-center text-sm">
         Cancel
       </Link>
     </form>

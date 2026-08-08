@@ -48,15 +48,16 @@ function LoginForm() {
   if (state.kind === 'sent') {
     return (
       <div className="w-full max-w-sm space-y-4 text-center">
-        <h1 className="text-2xl font-semibold tracking-tight">Check your email</h1>
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
-          We sent a sign-in link to <span className="font-medium">{state.email}</span>. Open it on
+        <h1 className="page-title">Check your email</h1>
+        <p className="text-sm text-ink-soft">
+          We sent a sign-in link to{' '}
+          <span className="figure font-medium text-ink">{state.email}</span>. Open it on
           this device to finish signing in.
         </p>
         <button
           type="button"
           onClick={() => setState({ kind: 'idle' })}
-          className="text-sm underline underline-offset-4 text-zinc-600 hover:text-black dark:text-zinc-400 dark:hover:text-white"
+          className="link text-sm"
         >
           Use a different email
         </button>
@@ -66,21 +67,16 @@ function LoginForm() {
 
   return (
     <form onSubmit={onSubmit} className="w-full max-w-sm space-y-5">
-      <div className="space-y-1.5 text-center">
-        <h1 className="text-3xl font-semibold tracking-tight">SplitApp</h1>
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
-          Sign in with your email. No password needed.
-        </p>
+      <div className="space-y-2 border-b border-rule pb-5">
+        <p className="khata-label">Shared expenses &middot; settled over UPI</p>
+        <h1 className="text-3xl font-semibold tracking-[-0.03em]">SplitApp</h1>
+        <p className="text-sm text-ink-soft">Sign in with your email. No password needed.</p>
       </div>
 
-      {authError && (
-        <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
-          {authError}
-        </p>
-      )}
+      {authError && <p className="notice-error">{authError}</p>}
 
       <div className="space-y-1.5">
-        <label htmlFor="email" className="block text-sm font-medium">
+        <label htmlFor="email" className="field-label">
           Email
         </label>
         <input
@@ -92,18 +88,16 @@ function LoginForm() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="you@example.com"
-          className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:focus:border-zinc-100"
+          className="field"
         />
       </div>
 
-      {state.kind === 'error' && (
-        <p className="text-sm text-red-600 dark:text-red-400">{state.message}</p>
-      )}
+      {state.kind === 'error' && <p className="text-sm text-debit">{state.message}</p>}
 
       <button
         type="submit"
         disabled={state.kind === 'sending'}
-        className="w-full rounded-md bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+        className="btn btn-primary btn-block"
       >
         {state.kind === 'sending' ? 'Sending…' : 'Send magic link'}
       </button>
@@ -113,7 +107,7 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <main className="flex flex-1 items-center justify-center bg-zinc-50 p-8 dark:bg-black">
+    <main className="flex flex-1 items-center justify-center p-8">
       <Suspense fallback={null}>
         <LoginForm />
       </Suspense>

@@ -11,7 +11,7 @@ function SubmitButton() {
     <button
       type="submit"
       disabled={pending}
-      className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+      className="btn btn-primary"
     >
       {pending ? 'Adding…' : 'Add'}
     </button>
@@ -41,20 +41,20 @@ export function AddMemberForm({ groupId }: { groupId: string }) {
           maxLength={80}
           placeholder="Name"
           aria-label="Name"
-          className="flex-1 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:focus:border-zinc-100"
+          className="field flex-1"
         />
         <input
           name="upi_id"
           inputMode="email"
           placeholder="UPI ID (optional)"
           aria-label="UPI ID (optional)"
-          className="flex-1 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:focus:border-zinc-100"
+          className="field field-amount flex-1"
         />
         <SubmitButton />
       </div>
 
-      {state.error && <p className="text-sm text-red-600 dark:text-red-400">{state.error}</p>}
-      <p className="text-xs text-zinc-500">
+      {state.error && <p className="text-sm text-debit">{state.error}</p>}
+      <p className="hint">
         Adds someone who isn&rsquo;t on SplitApp yet. They can join later with the invite link.
       </p>
     </form>

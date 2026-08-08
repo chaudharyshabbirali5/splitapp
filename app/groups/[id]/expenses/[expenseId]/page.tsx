@@ -76,17 +76,12 @@ export default async function ExpenseDetailPage({
 
   return (
     <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-8 p-6 sm:p-10">
-      <div className="space-y-1">
-        <Link
-          href={`/groups/${id}`}
-          className="text-sm underline underline-offset-4 text-zinc-600 hover:text-black dark:text-zinc-400 dark:hover:text-white"
-        >
+      <div className="space-y-1 border-b border-rule pb-4">
+        <Link href={`/groups/${id}`} className="link-back">
           &larr; Back to group
         </Link>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          {expense.description || 'Expense'}
-        </h1>
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
+        <h1 className="page-title pt-1">{expense.description || 'Expense'}</h1>
+        <p className="text-sm text-ink-soft">
           {payerName} paid &middot;{' '}
           {new Date(expense.created_at).toLocaleDateString('en-IN', {
             day: 'numeric',
@@ -96,34 +91,33 @@ export default async function ExpenseDetailPage({
         </p>
       </div>
 
-      <p className="text-4xl font-semibold tabular-nums">{formatPaise(total)}</p>
+      {/* The one figure this page exists for, given the room to say so. */}
+      <p className="figure text-4xl font-medium">{formatPaise(total)}</p>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-500">
+        <h2 className="khata-label">
           Split {rows.length} {rows.length === 1 ? 'way' : 'ways'}, equally
         </h2>
 
         {splitsError ? (
-          <p className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
-            Could not load the split: {splitsError.message}
-          </p>
+          <p className="notice-error">Could not load the split: {splitsError.message}</p>
         ) : (
-          <div className="overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800">
-            <ul className="divide-y divide-zinc-200 dark:divide-zinc-800">
+          <div>
+            <ul className="ledger border-b-0">
               {rows.map((s) => {
                 const m = byId.get(s.member_id);
                 return (
-                  <li key={s.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                  <li key={s.id} className="ledger-row">
                     <span className="min-w-0 truncate text-sm">
                       {m?.display_name ?? 'Unknown'}
                       {m?.user_id === null && (
-                        <span className="ml-2 text-xs text-zinc-500">not joined yet</span>
+                        <span className="ml-2 text-xs text-ink-faint">not joined yet</span>
                       )}
                       {m?.id === expense.paid_by && (
-                        <span className="ml-2 text-xs text-zinc-500">paid</span>
+                        <span className="chip chip-quiet ml-2">paid</span>
                       )}
                     </span>
-                    <span className="shrink-0 text-sm font-medium tabular-nums">
+                    <span className="figure shrink-0 text-sm font-medium">
                       {formatPaise(Number(s.share_minor))}
                     </span>
                   </li>
@@ -133,11 +127,13 @@ export default async function ExpenseDetailPage({
 
             {/* Shown so the rounding is auditable at a glance: the shares must
                 equal the total exactly, even when the amount does not divide evenly. */}
-            <div className="flex items-center justify-between gap-3 border-t border-zinc-200 bg-zinc-50 px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900">
-              <span className="text-sm text-zinc-600 dark:text-zinc-400">Shares add up to</span>
+            <div
+              className={`ledger-total ${sharesTotal === total ? '' : 'ledger-total-bad'}`}
+            >
+              <span className="khata-label">Shares add up to</span>
               <span
-                className={`text-sm font-medium tabular-nums ${
-                  sharesTotal === total ? '' : 'text-red-600 dark:text-red-400'
+                className={`figure text-sm font-medium ${
+                  sharesTotal === total ? '' : 'text-debit'
                 }`}
               >
                 {formatPaise(sharesTotal)}
@@ -148,7 +144,7 @@ export default async function ExpenseDetailPage({
         )}
 
         {rows.length > 1 && (
-          <p className="text-xs text-zinc-500">
+          <p className="hint">
             When the amount doesn&rsquo;t divide evenly, the leftover paise go to the people
             at the top of this list, so the shares always total the exact amount.
           </p>
@@ -157,7 +153,7 @@ export default async function ExpenseDetailPage({
 
       <Link
         href={`/groups/${id}/expenses/${expenseId}/edit`}
-        className="w-full rounded-md border border-zinc-300 px-4 py-2.5 text-center text-sm font-medium transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+        className="btn btn-quiet btn-block"
       >
         Edit expense
       </Link>

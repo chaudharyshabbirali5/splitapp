@@ -42,12 +42,9 @@ export default async function JoinPage({ params }: { params: Promise<{ code: str
 function JoinError({ message }: { message: string }) {
   return (
     <main className="mx-auto flex w-full max-w-sm flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
-      <h1 className="text-xl font-semibold tracking-tight">Could not join</h1>
-      <p className="text-sm text-zinc-600 dark:text-zinc-400">{message}</p>
-      <Link
-        href="/groups"
-        className="text-sm underline underline-offset-4 text-zinc-600 hover:text-black dark:text-zinc-400 dark:hover:text-white"
-      >
+      <h1 className="page-title">Could not join</h1>
+      <p className="text-sm text-ink-soft">{message}</p>
+      <Link href="/groups" className="link text-sm">
         Back to groups
       </Link>
     </main>

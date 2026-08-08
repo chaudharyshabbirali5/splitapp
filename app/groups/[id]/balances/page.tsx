@@ -60,9 +60,7 @@ export default async function BalancesPage({ params }: { params: Promise<{ id: s
   if (balances.error) {
     return (
       <Shell groupId={id} groupName={group.name}>
-        <p className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
-          Could not load balances: {balances.error.message}
-        </p>
+        <p className="notice-error">Could not load balances: {balances.error.message}</p>
       </Shell>
     );
   }
@@ -87,7 +85,7 @@ export default async function BalancesPage({ params }: { params: Promise<{ id: s
   } catch (e) {
     return (
       <Shell groupId={id} groupName={group.name}>
-        <p className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
+        <p className="notice-error">
           Balances could not be read safely: {e instanceof Error ? e.message : String(e)}
         </p>
       </Shell>
@@ -107,34 +105,36 @@ export default async function BalancesPage({ params }: { params: Promise<{ id: s
   return (
     <Shell groupId={id} groupName={group.name}>
       {!hasExpenses && (
-        <p className="rounded-lg border border-dashed border-zinc-300 px-6 py-8 text-center text-sm text-zinc-600 dark:border-zinc-700 dark:text-zinc-400">
+        <p className="empty text-sm text-ink-soft">
           No expenses yet. Everyone starts at zero.
         </p>
       )}
 
       <section className="space-y-3">
-        <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-500">Balances</h2>
+        <h2 className="khata-label">Balances</h2>
 
-        <div className="overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800">
-          <ul className="divide-y divide-zinc-200 dark:divide-zinc-800">
+        <div>
+          <ul className="ledger border-b-0">
             {nets.map((n) => (
-              <li key={n.memberId} className="flex items-center justify-between gap-3 px-4 py-3">
+              <li key={n.memberId} className="ledger-row">
                 <span className="min-w-0 truncate text-sm">
                   {n.displayName}
                   {n.isPlaceholder && (
-                    <span className="ml-2 text-xs text-zinc-500">not joined yet</span>
+                    <span className="ml-2 text-xs text-ink-faint">not joined yet</span>
                   )}
                 </span>
 
                 {n.netMinor === 0n ? (
-                  <span className="shrink-0 text-sm text-zinc-500">settled up</span>
+                  <span className="khata-label shrink-0">settled up</span>
                 ) : n.netMinor > 0n ? (
-                  <span className="shrink-0 text-sm font-medium tabular-nums text-green-700 dark:text-green-400">
-                    gets back {formatPaise(n.netMinor)}
+                  <span className="figure shrink-0 text-sm font-medium text-credit">
+                    +{formatPaise(n.netMinor)}
+                    <span className="khata-label ml-2 text-credit">gets back</span>
                   </span>
                 ) : (
-                  <span className="shrink-0 text-sm font-medium tabular-nums text-amber-700 dark:text-amber-400">
-                    owes {formatPaise(-n.netMinor)}
+                  <span className="figure shrink-0 text-sm font-medium text-debit">
+                    &minus;{formatPaise(-n.netMinor)}
+                    <span className="khata-label ml-2 text-debit">owes</span>
                   </span>
                 )}
               </li>
@@ -142,19 +142,12 @@ export default async function BalancesPage({ params }: { params: Promise<{ id: s
           </ul>
 
           {/* Invariant #7 made visible: if the nets ever stop cancelling out,
-              that is a real bug and it should be on screen, not swallowed. */}
-          <div
-            className={`flex items-center justify-between gap-3 border-t px-4 py-3 ${
-              total === 0n
-                ? 'border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900'
-                : 'border-red-300 bg-red-50 dark:border-red-900 dark:bg-red-950'
-            }`}
-          >
-            <span className="text-sm text-zinc-600 dark:text-zinc-400">Balances add up to</span>
+              that is a real bug and it should be on screen, not swallowed.
+              The double rule is the ledger's "this figure is final". */}
+          <div className={`ledger-total ${total === 0n ? '' : 'ledger-total-bad'}`}>
+            <span className="khata-label">Balances add up to</span>
             <span
-              className={`text-sm font-medium tabular-nums ${
-                total === 0n ? '' : 'text-red-600 dark:text-red-400'
-              }`}
+              className={`figure text-sm font-medium ${total === 0n ? '' : 'text-debit'}`}
             >
               {total === 0n ? formatPaise(0) : `${formatPaise(total)} — expected ₹0.00`}
             </span>
@@ -164,11 +157,9 @@ export default async function BalancesPage({ params }: { params: Promise<{ id: s
 
       {(pendingSettlements ?? []).length > 0 && (
         <section className="space-y-3">
-          <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-500">
-            Pending payments
-          </h2>
+          <h2 className="khata-label">Pending payments</h2>
 
-          <ul className="divide-y divide-zinc-200 rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+          <ul className="ledger">
             {(pendingSettlements ?? []).map((s) => {
               const from = memberById.get(s.from_member);
               const to = memberById.get(s.to_member);
@@ -176,16 +167,20 @@ export default async function BalancesPage({ params }: { params: Promise<{ id: s
               const iAmPayer = from?.user_id === user.id;
 
               return (
-                <li key={s.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                <li key={s.id} className="ledger-row items-start">
                   <span className="min-w-0 text-sm">
                     <span className="font-medium">
                       {iAmPayer ? 'You' : (from?.display_name ?? 'Someone')}
                     </span>{' '}
-                    marked {formatPaise(toPaise(s.amount_minor))} paid to{' '}
+                    marked{' '}
+                    <span className="figure font-medium">
+                      {formatPaise(toPaise(s.amount_minor))}
+                    </span>{' '}
+                    paid to{' '}
                     <span className="font-medium">
                       {iAmPayee ? 'you' : (to?.display_name ?? 'someone')}
                     </span>
-                    <span className="mt-0.5 block text-xs text-zinc-500">
+                    <span className="hint mt-0.5 block">
                       {iAmPayee
                         ? 'Confirm once the money has arrived.'
                         : `Waiting for ${to?.display_name ?? 'them'} to confirm — this does not
@@ -196,16 +191,14 @@ export default async function BalancesPage({ params }: { params: Promise<{ id: s
                   {iAmPayee ? (
                     <ConfirmButton action={confirmSettlement.bind(null, id, s.id)} />
                   ) : (
-                    <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-300">
-                      pending
-                    </span>
+                    <span className="chip chip-pending shrink-0">pending</span>
                   )}
                 </li>
               );
             })}
           </ul>
 
-          <p className="text-xs text-zinc-500">
+          <p className="hint">
             Pending payments are ignored by the balances above until the person who was
             paid confirms them.
           </p>
@@ -213,25 +206,24 @@ export default async function BalancesPage({ params }: { params: Promise<{ id: s
       )}
 
       <section className="space-y-3">
-        <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-500">
-          Who pays whom
-        </h2>
+        <h2 className="khata-label">Who pays whom</h2>
 
         {payments.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-zinc-300 px-6 py-10 text-center text-sm dark:border-zinc-700">
-            <span className="block text-base font-medium">All settled up</span>
-            <span className="mt-1 block text-zinc-600 dark:text-zinc-400">
-              Nobody owes anybody anything.
-            </span>
+          <p className="empty text-sm">
+            <span className="block font-medium">All settled up</span>
+            <span className="mt-1 block text-ink-soft">Nobody owes anybody anything.</span>
           </p>
         ) : (
           <>
-            <ul className="divide-y divide-zinc-200 rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+            <ul className="ledger">
               {payments.map((p, i) => {
                 const isMine = myMemberId !== null && p.from.memberId === myMemberId;
                 return (
-                  <li key={`${p.from.memberId}-${p.to.memberId}-${i}`} className="px-4 py-3">
-                    <div className="flex items-center justify-between gap-3">
+                  <li
+                    key={`${p.from.memberId}-${p.to.memberId}-${i}`}
+                    className="px-2.5 py-3"
+                  >
+                    <div className="flex items-start justify-between gap-3">
                       <span className="min-w-0 text-sm">
                         <span className="font-medium">
                           {isMine ? 'You' : p.from.displayName}
@@ -239,12 +231,12 @@ export default async function BalancesPage({ params }: { params: Promise<{ id: s
                         {isMine ? 'pay' : 'pays'}{' '}
                         <span className="font-medium">{p.to.displayName}</span>
                         {p.to.upiId && (
-                          <span className="mt-0.5 block truncate text-xs text-zinc-500">
+                          <span className="figure mt-0.5 block truncate text-xs text-ink-faint">
                             {p.to.upiId}
                           </span>
                         )}
                       </span>
-                      <span className="shrink-0 text-sm font-medium tabular-nums">
+                      <span className="figure shrink-0 text-sm font-medium">
                         {formatPaise(p.amountMinor)}
                       </span>
                     </div>
@@ -266,7 +258,7 @@ export default async function BalancesPage({ params }: { params: Promise<{ id: s
                 );
               })}
             </ul>
-            <p className="text-xs text-zinc-500">
+            <p className="hint">
               The shortest set of payments that clears everyone —{' '}
               {payments.length === 1 ? '1 transfer' : `${payments.length} transfers`} instead of
               everyone paying everyone.
@@ -289,15 +281,12 @@ function Shell({
 }) {
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-8 p-6 sm:p-10">
-      <header className="space-y-1">
-        <Link
-          href={`/groups/${groupId}`}
-          className="text-sm underline underline-offset-4 text-zinc-600 hover:text-black dark:text-zinc-400 dark:hover:text-white"
-        >
+      <header className="space-y-1 border-b border-rule pb-4">
+        <Link href={`/groups/${groupId}`} className="link-back">
           &larr; Back to group
         </Link>
-        <h1 className="text-2xl font-semibold tracking-tight">Balances</h1>
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">{groupName}</p>
+        <h1 className="page-title pt-1">Balances</h1>
+        <p className="text-sm text-ink-soft">{groupName}</p>
       </header>
       {children}
     </main>

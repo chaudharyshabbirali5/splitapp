@@ -23,23 +23,17 @@ export default async function GroupsPage() {
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-8 p-6 sm:p-10">
-      <header className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Groups</h1>
-          <p className="text-sm text-zinc-600 dark:text-zinc-400">{user.email}</p>
+      <header className="flex items-start justify-between gap-4 border-b border-rule pb-4">
+        <div className="min-w-0">
+          <h1 className="page-title">Groups</h1>
+          <p className="figure mt-1 truncate text-xs text-ink-faint">{user.email}</p>
         </div>
-        <div className="flex items-center gap-3 text-sm">
-          <Link
-            href="/profile"
-            className="underline underline-offset-4 text-zinc-600 hover:text-black dark:text-zinc-400 dark:hover:text-white"
-          >
+        <div className="flex shrink-0 items-center gap-4 text-sm">
+          <Link href="/profile" className="link">
             Profile
           </Link>
           <form action="/auth/signout" method="post">
-            <button
-              type="submit"
-              className="underline underline-offset-4 text-zinc-600 hover:text-black dark:text-zinc-400 dark:hover:text-white"
-            >
+            <button type="submit" className="link">
               Sign out
             </button>
           </form>
@@ -47,38 +41,28 @@ export default async function GroupsPage() {
       </header>
 
       {error ? (
-        <p className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
-          Could not load your groups: {error.message}
-        </p>
+        <p className="notice-error">Could not load your groups: {error.message}</p>
       ) : groups && groups.length > 0 ? (
-        <ul className="divide-y divide-zinc-200 rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+        <ul className="ledger">
           {groups.map((g) => (
             <li key={g.id}>
-              <Link
-                href={`/groups/${g.id}`}
-                className="flex items-center justify-between px-4 py-3 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900"
-              >
-                <span className="font-medium">{g.name}</span>
-                <span className="text-xs uppercase tracking-wide text-zinc-500">
-                  {g.group_type}
-                </span>
+              <Link href={`/groups/${g.id}`} className="ledger-row ledger-link">
+                <span className="min-w-0 truncate font-medium">{g.name}</span>
+                <span className="chip chip-quiet">{g.group_type}</span>
               </Link>
             </li>
           ))}
         </ul>
       ) : (
-        <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-zinc-300 px-6 py-14 text-center dark:border-zinc-700">
-          <p className="text-base font-medium">No groups yet</p>
-          <p className="max-w-xs text-sm text-zinc-600 dark:text-zinc-400">
+        <div className="empty flex flex-col items-center gap-2">
+          <p className="khata-label">Nothing entered yet</p>
+          <p className="mt-1 max-w-xs text-sm text-ink-soft">
             Create a group for a trip, a flat, or a one-off event, then start adding expenses.
           </p>
         </div>
       )}
 
-      <Link
-        href="/groups/new"
-        className="block w-full rounded-md bg-zinc-900 px-4 py-3 text-center text-sm font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
-      >
+      <Link href="/groups/new" className="btn btn-primary btn-block">
         Create group
       </Link>
     </main>

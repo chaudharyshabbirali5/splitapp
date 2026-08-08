@@ -106,8 +106,8 @@ export default function AuthCallbackPage() {
   }, []);
 
   return (
-    <main className="flex flex-1 items-center justify-center bg-zinc-50 p-8 dark:bg-black">
-      <p className="text-sm text-zinc-600 dark:text-zinc-400" role="status" aria-live="polite">
+    <main className="flex flex-1 items-center justify-center p-8">
+      <p className="khata-label" role="status" aria-live="polite">
         {error ? `Sign-in failed: ${error}` : 'Signing you in…'}
       </p>
     </main>

@@ -41,9 +41,9 @@ export default async function NewExpensePage({ params }: { params: Promise<{ id:
 
   return (
     <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-6 p-6 sm:p-10">
-      <div className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Add expense</h1>
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">{group.name}</p>
+      <div className="space-y-1 border-b border-rule pb-4">
+        <h1 className="page-title">Add expense</h1>
+        <p className="text-sm text-ink-soft">{group.name}</p>
       </div>
 
       <ExpenseForm

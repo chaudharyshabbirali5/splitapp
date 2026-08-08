@@ -14,7 +14,7 @@ function MarkPaidButton({ amount }: { amount: string }) {
     <button
       type="submit"
       disabled={pending}
-      className="w-full rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium transition-colors hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
+      className="btn btn-quiet btn-block"
     >
       {pending ? 'Recording…' : `I've paid ₹${amount}`}
     </button>
@@ -65,7 +65,7 @@ export function SettleRow({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="w-full rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+        className="btn btn-primary btn-block"
       >
         Settle up
       </button>
@@ -73,56 +73,49 @@ export function SettleRow({
   }
 
   return (
-    <div className="space-y-3 rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
+    <div className="space-y-3 border-l-2 border-brand pl-3">
       {upiHref ? (
         <>
-          <a
-            href={upiHref}
-            className="block w-full rounded-md bg-zinc-900 px-4 py-2.5 text-center text-sm font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
-          >
+          <a href={upiHref} className="btn btn-primary btn-block">
             Pay ₹{amount} with UPI
           </a>
-          <p className="text-xs text-zinc-500">
+          <p className="hint">
             Opens your UPI app. Only works on a phone with a UPI app installed — on a
             computer nothing will happen.
           </p>
         </>
       ) : (
         <>
-          <button
-            type="button"
-            disabled
-            className="w-full cursor-not-allowed rounded-md bg-zinc-200 px-4 py-2.5 text-sm font-medium text-zinc-500 dark:bg-zinc-800"
-          >
+          <button type="button" disabled className="btn btn-dead btn-block">
             No UPI ID for {payeeName}
           </button>
-          <p className="text-xs text-zinc-500">
+          <p className="hint">
             Ask {payeeName} to add a UPI ID to their profile, or pay them another way and
             still record it below.
           </p>
         </>
       )}
 
-      <form action={formAction} className="space-y-2 border-t border-zinc-200 pt-3 dark:border-zinc-800">
-        <label htmlFor={`amt-${toMemberId}`} className="block text-xs font-medium">
+      <form action={formAction} className="space-y-2 border-t border-rule pt-3">
+        <label htmlFor={`amt-${toMemberId}`} className="khata-label block">
           Amount actually paid
         </label>
         <div className="flex items-center gap-2">
-          <span className="text-sm text-zinc-500">₹</span>
+          <span className="figure text-sm text-ink-faint">₹</span>
           <input
             id={`amt-${toMemberId}`}
             name="amount"
             inputMode="decimal"
             required
             defaultValue={amount}
-            className="w-full rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm outline-none focus:border-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:focus:border-zinc-100"
+            className="field field-amount"
           />
         </div>
-        <p className="text-xs text-zinc-500">
+        <p className="hint">
           Change this if you paid less. {payeeName} has to confirm before it counts.
         </p>
 
-        {state.error && <p className="text-sm text-red-600 dark:text-red-400">{state.error}</p>}
+        {state.error && <p className="text-sm text-debit">{state.error}</p>}
 
         <MarkPaidButton amount={amount} />
       </form>
@@ -130,7 +123,7 @@ export function SettleRow({
       <button
         type="button"
         onClick={() => setOpen(false)}
-        className="w-full text-center text-xs underline underline-offset-4 text-zinc-600 hover:text-black dark:text-zinc-400 dark:hover:text-white"
+        className="link-back w-full text-center"
       >
         Cancel
       </button>

@@ -30,11 +30,9 @@ export default async function NewGroupPage() {
 
   return (
     <main className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center gap-6 p-6 sm:p-10">
-      <div className="space-y-1.5">
-        <h1 className="text-2xl font-semibold tracking-tight">New group</h1>
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
-          You&rsquo;ll be added as the first member.
-        </p>
+      <div className="space-y-1.5 border-b border-rule pb-4">
+        <h1 className="page-title">New group</h1>
+        <p className="text-sm text-ink-soft">You&rsquo;ll be added as the first member.</p>
       </div>
 
       <CreateGroupForm />

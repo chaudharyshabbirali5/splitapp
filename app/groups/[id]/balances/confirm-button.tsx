@@ -8,7 +8,7 @@ function Inner() {
     <button
       type="submit"
       disabled={pending}
-      className="shrink-0 rounded-md bg-green-700 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-green-800 disabled:opacity-50"
+      className="btn btn-credit btn-sm shrink-0"
     >
       {pending ? 'Confirming…' : 'Confirm received'}
     </button>
