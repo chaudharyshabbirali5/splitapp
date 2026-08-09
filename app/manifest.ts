@@ -21,8 +21,8 @@ export default function manifest(): MetadataRoute.Manifest {
     // The splash plate is the paper ground with the indigo icon on it — the
     // same pairing as the app itself, so launching does not flash a colour the
     // app never uses again.
-    background_color: '#f7f8f4',
-    theme_color: '#23405e',
+    background_color: '#faf7f2',
+    theme_color: '#0b7d73',
     categories: ['finance', 'productivity'],
     icons: [
       { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },

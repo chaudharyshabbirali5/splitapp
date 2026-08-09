@@ -46,7 +46,7 @@ export const viewport: Viewport = {
   // Tracks the page ground in each theme, so the browser/status bar reads as an
   // extension of the paper rather than a band sitting on top of it.
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f7f8f4" },
+    { media: "(prefers-color-scheme: light)", color: "#faf7f2" },
     { media: "(prefers-color-scheme: dark)", color: "#12161a" },
   ],
   width: "device-width",

@@ -28,14 +28,16 @@
   --rule: #e5e0d8;        /* hairline between entries */
   --rule-strong: #ccc5bb; /* borders you're meant to notice */
 
-  --brand: #0d9488;
-  --brand-hover: #0a7a70;
+  /* Darkened from #0d9488 so white button text clears 4.5:1 (WCAG AA). */
+  --brand: #0b7d73;
+  --brand-hover: #096960;
   --brand-soft: #e0f5f3;
 
   /* Coral. Reserved for the money-moving actions — settle up and pay — so
-     they read as the one thing on the screen that is not navigation. */
-  --accent: #e86552;
-  --accent-hover: #d4523f;
+     they read as the one thing on the screen that is not navigation.
+     Darkened from #e86552 for the same contrast reason as the teal. */
+  --accent: #c9472f;
+  --accent-hover: #b23d28;
 
   --credit: #1f6b4a;      /* reserved: gets money back */
   --debit: #9b2c2c;       /* reserved: owes money */

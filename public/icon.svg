@@ -3,10 +3,10 @@
   <!-- A khata page: entries of uneven length, ruled off with the accountant's
        double rule in the same green the app uses for "gets money back". The
        uneven rows are the point — the ledger still balances to the paise. -->
-  <rect width="512" height="512" fill="#23405e"/>
-  <rect x="88" y="64" width="336" height="384" rx="4" fill="#f7f8f4"/>
-  <line x1="146" y1="64" x2="146" y2="448" stroke="#23405e" stroke-opacity="0.45" stroke-width="7"/>
-  <g stroke="#23405e" stroke-width="22" stroke-linecap="butt">
+  <rect width="512" height="512" fill="#0b7d73"/>
+  <rect x="88" y="64" width="336" height="384" rx="4" fill="#faf7f2"/>
+  <line x1="146" y1="64" x2="146" y2="448" stroke="#0b7d73" stroke-opacity="0.45" stroke-width="7"/>
+  <g stroke="#0b7d73" stroke-width="22" stroke-linecap="butt">
     <line x1="180" y1="142" x2="380" y2="142"/>
     <line x1="180" y1="206" x2="320" y2="206"/>
     <line x1="180" y1="270" x2="356" y2="270"/>
