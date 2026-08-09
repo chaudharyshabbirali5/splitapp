@@ -2,8 +2,8 @@
 **The project's living memory.** Open this when you think "why did I do it this way?"
 or "what was I supposed to fix before launch?" Keep it updated as things change.
 
-_Snapshot as of: after Step 8 (PWA), the A1 security fix, and group archive. Update the date whenever you edit._
-_Last updated: 2026-08-05 (after group archive / soft delete, commit 908d73d)_
+_Snapshot as of: after Step 8 (PWA), the A1 security fix, group archive, and the design pass. Update the date whenever you edit._
+_Last updated: 2026-08-08 (after the design pass and the teal/coral retheme)_
 
 ---
 
@@ -45,6 +45,25 @@ for what to build and how; this file tracks decisions and what's left.
   groups (monthly use), even though the app also handles trips/events/one-offs with the
   same engine. Don't fork the data model per use case.
 
+- **All colour is a token; no component holds a hex value.** The palette lives in CSS
+  custom properties at the top of `app/globals.css` and reaches Tailwind through
+  `@theme inline`. The nine screens share one set of component classes (`.ledger`,
+  `.btn-*`, `.field`, `.chip-*`, `.figure`, `.khata-label`). This is why the whole app
+  could be rethemed from navy to teal by editing ~25 lines. Keep it that way: if you find
+  yourself writing `bg-teal-600` in a screen, add a token instead.
+
+- **Green and red are RESERVED, and this is a real rule, not a style preference.**
+  `--credit` means somebody gets money back; `--debit` means somebody owes. Neither is
+  ever used for branding, and "delete" only turns red at the moment of confirmation. In
+  a money app, a red button that doesn't mean "you owe" trains people to misread the one
+  place it does. Brand colour is the teal `--brand`; the money-moving actions (settle up,
+  pay with UPI) are the coral `--accent` and nothing else uses it.
+
+- **Figures are monospace, everywhere.** Every rupee amount, UPI ID, email and invite URL
+  is set in IBM Plex Mono with tabular figures, so columns of money line up. This is what
+  makes the app read as a record rather than as an interface — and it is doing the same
+  job as the exact-paise arithmetic underneath.
+
 - **Security model = Row-Level Security in the database**, because the app talks straight
   to Supabase. RLS policies ARE the security. Never disable RLS; never expose a table
   without a policy. Membership-check helper functions are SECURITY DEFINER (to avoid
@@ -71,6 +90,19 @@ for what to build and how; this file tracks decisions and what's left.
   expenses refuses to delete. The `groups_delete` policy in splitapp.sql is therefore
   effectively dead code for real groups.
 
+- **Light and dark are currently two different brands.** The teal/coral retheme changed
+  only the `:root` light block. The `@media (prefers-color-scheme: dark)` block still
+  holds the original navy `--brand: #8fb2d4`, so the app is teal by day and navy by
+  night. `--accent` is not redefined there, so coral does carry into dark — but paired
+  with dark mode's `--on-fill: #101418`, the settle buttons get charcoal text on coral
+  rather than white. Deliberate ("for now"), but it is the first thing to fix.
+
+- **White button text is below WCAG AA.** `--on-fill: #ffffff` gives 3.7:1 on the teal
+  and 3.3:1 on the coral; 4.5:1 is the bar for 14px text. The previous navy was very
+  dark, so this is a regression introduced by the retheme, not a pre-existing condition.
+  Darkening the two fills to roughly `#0b7d73` and `#c9472f` clears it while still
+  reading as the same colours.
+
 - **An archived group is frozen, including its invite link.** A database trigger rejects
   inserts/updates on `group_members`, `expenses` and `settlements` belonging to an archived
   group — so an invite link shared months ago stops working too, not just the UI. Nothing
@@ -92,6 +124,17 @@ Park these; none block the current work. Rough order to address them:
 - **A3 — auth re-eval per row (linter INFO).** Mechanical perf tweak: change `auth.uid()`
   to `(select auth.uid())` in policies so Postgres evaluates once per query, not per row.
   Lowest severity. Bundle with A2.
+
+### Design debt (created by the retheme, cheap to clear)
+- **Retheme the dark block.** Pick the teal/coral equivalents for `--brand`,
+  `--brand-hover`, `--brand-soft`, the grounds and the rules, and redefine `--accent` so
+  coral works on a dark ground. One edit to `app/globals.css`, no component changes.
+- **Fix button text contrast** (see section 3). Either darken `--brand`/`--accent`, or
+  keep the fills and accept that button labels fail AA — but decide it rather than
+  inherit it.
+- **Icon and manifest still carry the navy.** `public/icon.svg` (the source the PNG set
+  is generated from), `manifest.ts`'s `theme_color`, and `layout.tsx`'s viewport
+  `themeColor` pair are all still Khata navy/paper. The app is teal; its icon is not.
 
 ### User-facing gaps (not blocking, but someone will hit these)
 - **Build an "Archived groups" / un-archive screen.** Archiving works, but there is **no way

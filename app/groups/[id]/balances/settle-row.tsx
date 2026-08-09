@@ -65,7 +65,7 @@ export function SettleRow({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="btn btn-primary btn-block"
+        className="btn btn-accent btn-block"
       >
         Settle up
       </button>
@@ -76,7 +76,7 @@ export function SettleRow({
     <div className="space-y-3 border-l-2 border-brand pl-3">
       {upiHref ? (
         <>
-          <a href={upiHref} className="btn btn-primary btn-block">
+          <a href={upiHref} className="btn btn-accent btn-block">
             Pay ₹{amount} with UPI
           </a>
           <p className="hint">

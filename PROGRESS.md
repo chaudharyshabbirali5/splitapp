@@ -3,7 +3,7 @@
 to explain where the project stands. For the "why" behind decisions and the to-do list,
 see DECISIONS_AND_BACKLOG.md.
 
-_Last updated: 2026-08-05 — after group archive / soft delete (commit 908d73d)_
+_Last updated: 2026-08-08 — after the design pass and the teal/coral retheme_
 
 ---
 
@@ -37,16 +37,30 @@ _Last updated: 2026-08-05 — after group archive / soft delete (commit 908d73d)
 | 8 | Installable PWA (manifest, icons, safe service worker) | ✅ done |
 | — | Security audit + A1 settlement-hardening fix | ✅ done |
 | — | "Delete group" as a creator-only **archive** (soft delete) | ✅ done — commit 908d73d, 25 behaviour tests pass |
+| — | **Design pass** — one token system, new type, new icon, all 9 screens | ✅ done — commit 9d89434 |
+| — | Retheme to teal / coral / cream (light mode only) | ✅ done — dark mode still on the old palette |
 
-**v1 is feature-complete.** Create groups → add people (incl. those not on the app) →
-split expenses → see who owes whom → settle over UPI → installed on a phone, with
-account isolation holding down to the browser cache.
+**v1 is feature-complete and themed.** Create groups → add people (incl. those not on
+the app) → split expenses → see who owes whom → settle over UPI → installed on a phone,
+with account isolation holding down to the browser cache.
+
+## How the styling works now
+All colour lives in CSS custom properties at the top of `app/globals.css`, exposed to
+Tailwind via `@theme inline`. No component file contains a hex value or a `zinc-`/`red-`
+utility. To change the look, change the tokens — not the screens.
+
+- Light mode: teal brand `#0d9488`, coral accent `#e86552`, warm cream ground `#faf7f2`.
+- **Coral is only for settle / pay.** Everything else that is a primary action is teal.
+- `--credit` (green) and `--debit` (red) are **reserved**: green means gets money back,
+  red means owes. Never use them for branding or for "delete".
+- Type: Instrument Sans for reading, IBM Plex Mono for every figure, UPI ID and label.
 
 ---
 
 ## What's NEXT (in order)
-1. **Design pass** — brand colors, typography, consistent styling across all screens.
-   (Currently functional but plain.) This is the immediate next task.
+1. **Finish the retheme in dark mode.** Light is teal/coral; dark is still the old navy.
+   Small job, but the app currently has two different identities. See
+   DECISIONS_AND_BACKLOG.md section 3.
 2. **Pre-launch gate: real email** — domain + Resend so people who aren't you can log in.
    Required before inviting any outside tester.
 3. **Before public:** account-deletion strategy, privacy policy, backups, abuse controls
@@ -61,6 +75,10 @@ account isolation holding down to the browser cache.
   3 members, 1 expense) is untouched.
 - **Archiving has no undo in the UI yet** — recovering an archived group needs manual SQL.
   Tracked in DECISIONS_AND_BACKLOG.md section 4.
+- **Reinstall the PWA on your phone** after a theme change (uninstall first). The launcher
+  icon and splash screen only refresh on a fresh install.
+- **Display names are full usernames** (`chaudharyshabbirali88`), which truncate on every
+  balance row. Shortening them in Profile improves the app more than any palette change.
 
 ## Working conventions (for any AI coding session)
 - Never edit `splitapp.sql` or existing migrations — add NEW additive migrations.

@@ -17,20 +17,25 @@
 :root {
   color-scheme: light;
 
-  --ground: #f7f8f4;      /* the page — paper, with a faint green bias */
+  --ground: #faf7f2;      /* the page — warm cream */
   --surface: #ffffff;     /* things you type into */
-  --sunken: #eef0ea;      /* totals, hover, quiet fills */
+  --sunken: #f0ece5;      /* totals, hover, quiet fills */
 
-  --ink: #1b2430;
-  --ink-soft: #5b6675;
-  --ink-faint: #8c95a1;
+  --ink: #2d2d2d;
+  --ink-soft: #6b6b6b;
+  --ink-faint: #9a9a9a;
 
-  --rule: #dcdfd6;        /* hairline between entries */
-  --rule-strong: #b9bfb2; /* borders you're meant to notice */
+  --rule: #e5e0d8;        /* hairline between entries */
+  --rule-strong: #ccc5bb; /* borders you're meant to notice */
 
-  --brand: #23405e;
-  --brand-hover: #1a3149;
-  --brand-soft: #e7ecf2;
+  --brand: #0d9488;
+  --brand-hover: #0a7a70;
+  --brand-soft: #e0f5f3;
+
+  /* Coral. Reserved for the money-moving actions — settle up and pay — so
+     they read as the one thing on the screen that is not navigation. */
+  --accent: #e86552;
+  --accent-hover: #d4523f;
 
   --credit: #1f6b4a;      /* reserved: gets money back */
   --debit: #9b2c2c;       /* reserved: owes money */
@@ -38,10 +43,10 @@
   --pending: #7a5610;
   --pending-soft: #f3ecdc;
 
-  /* Text placed on a saturated fill (brand / credit / debit buttons). */
-  --on-fill: #f7f8f4;
+  /* Text placed on a saturated fill (brand / accent / credit / debit buttons). */
+  --on-fill: #ffffff;
 
-  --radius: 2px;
+  --radius: 6px;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -247,6 +252,16 @@
 
   .btn-primary:hover:not(:disabled) {
     background: var(--brand-hover);
+  }
+
+  /* Coral, and only on settle/pay: the actions that move real money. */
+  .btn-accent {
+    background: var(--accent);
+    color: var(--on-fill);
+  }
+
+  .btn-accent:hover:not(:disabled) {
+    background: var(--accent-hover);
   }
 
   .btn-quiet {
