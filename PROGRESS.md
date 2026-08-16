@@ -3,7 +3,10 @@
 to explain where the project stands. For the "why" behind decisions and the to-do list,
 see DECISIONS_AND_BACKLOG.md.
 
-_Last updated: 2026-08-08 — after the design pass and the teal/coral retheme_
+_Last updated: 2026-08-16 — after the contrast + icon fix (commit 52fb194)_
+
+> New to this project, or a fresh AI session? Read **HANDOFF.md** first — it tells the
+> whole story from step 1, the decisions and why, and how we work.
 
 ---
 
@@ -29,7 +32,7 @@ _Last updated: 2026-08-08 — after the design pass and the teal/coral retheme_
 |------|------|--------|
 | 1 | Database schema, RLS, balance engine | ✅ done & verified |
 | 2 | Next.js skeleton + Vercel deploy pipeline | ✅ done |
-| 3 | Email magic-link login (token-hash flow, works across browsers/devices) | ✅ done |
+| 3 | Email magic-link login (works across browsers/devices — see HANDOFF.md §4) | ✅ done |
 | 4 | Create groups, add real + placeholder members, self-join via invite link | ✅ done |
 | 5 | Add/edit/soft-delete expenses, equal split with exact paise rounding | ✅ done |
 | 6 | Balances screen: per-person nets + simplified "who pays whom" | ✅ done |
@@ -38,7 +41,8 @@ _Last updated: 2026-08-08 — after the design pass and the teal/coral retheme_
 | — | Security audit + A1 settlement-hardening fix | ✅ done |
 | — | "Delete group" as a creator-only **archive** (soft delete) | ✅ done — commit 908d73d, 25 behaviour tests pass |
 | — | **Design pass** — one token system, new type, new icon, all 9 screens | ✅ done — commit 9d89434 |
-| — | Retheme to teal / coral / cream (light mode only) | ✅ done — dark mode still on the old palette |
+| — | Retheme to teal / coral / cream (light mode only) | ✅ done — commit 97b9fbe |
+| — | WCAG contrast fix + teal icon, manifest and browser chrome | ✅ done — commit 52fb194 |
 
 **v1 is feature-complete and themed.** Create groups → add people (incl. those not on
 the app) → split expenses → see who owes whom → settle over UPI → installed on a phone,
@@ -49,11 +53,14 @@ All colour lives in CSS custom properties at the top of `app/globals.css`, expos
 Tailwind via `@theme inline`. No component file contains a hex value or a `zinc-`/`red-`
 utility. To change the look, change the tokens — not the screens.
 
-- Light mode: teal brand `#0d9488`, coral accent `#e86552`, warm cream ground `#faf7f2`.
+- Light mode: teal brand `#0b7d73`, coral accent `#c9472f`, warm cream ground `#faf7f2`.
+  Both fills clear WCAG AA against white button text (5.01:1 and 4.75:1) — keep it that
+  way if you retune them.
 - **Coral is only for settle / pay.** Everything else that is a primary action is teal.
 - `--credit` (green) and `--debit` (red) are **reserved**: green means gets money back,
   red means owes. Never use them for branding or for "delete".
 - Type: Instrument Sans for reading, IBM Plex Mono for every figure, UPI ID and label.
+- **Dark mode is still the old navy.** Only the `:root` light block was rethemed.
 
 ---
 

@@ -2,8 +2,12 @@
 **The project's living memory.** Open this when you think "why did I do it this way?"
 or "what was I supposed to fix before launch?" Keep it updated as things change.
 
-_Snapshot as of: after Step 8 (PWA), the A1 security fix, group archive, and the design pass. Update the date whenever you edit._
-_Last updated: 2026-08-08 (after the design pass and the teal/coral retheme)_
+_Snapshot as of: after Step 8 (PWA), the A1 security fix, group archive, the design pass and the teal/coral retheme. Update the date whenever you edit._
+_Last updated: 2026-08-16 (after the contrast + icon fix, commit 52fb194)_
+
+> New to this project, or a fresh AI session? Read **HANDOFF.md** first — it tells the
+> whole story from step 1 and explains how we work. This file is the "why" and the
+> to-do list; PROGRESS.md is the current status.
 
 ---
 
@@ -92,16 +96,19 @@ for what to build and how; this file tracks decisions and what's left.
 
 - **Light and dark are currently two different brands.** The teal/coral retheme changed
   only the `:root` light block. The `@media (prefers-color-scheme: dark)` block still
-  holds the original navy `--brand: #8fb2d4`, so the app is teal by day and navy by
-  night. `--accent` is not redefined there, so coral does carry into dark — but paired
+  holds the original Khata navy `--brand: #8fb2d4`, so the app is teal by day and navy
+  by night. `--accent` is not redefined there, so coral does carry into dark — but paired
   with dark mode's `--on-fill: #101418`, the settle buttons get charcoal text on coral
-  rather than white. Deliberate ("for now"), but it is the first thing to fix.
+  rather than white. Deliberate ("for now"), and now the **only** thing left over from
+  the retheme. This is the next task.
 
-- **White button text is below WCAG AA.** `--on-fill: #ffffff` gives 3.7:1 on the teal
-  and 3.3:1 on the coral; 4.5:1 is the bar for 14px text. The previous navy was very
-  dark, so this is a regression introduced by the retheme, not a pre-existing condition.
-  Darkening the two fills to roughly `#0b7d73` and `#c9472f` clears it while still
-  reading as the same colours.
+- **Button contrast was a real regression, and it is fixed.** The first retheme shipped
+  `--brand: #0d9488` and `--accent: #e86552`, which gave white button text 3.7:1 and
+  3.3:1 — under the 4.5:1 WCAG AA bar for 14px text. The navy it replaced was very dark,
+  so this was introduced by the retheme, not inherited. Commit 52fb194 darkened them to
+  `#0b7d73` (**5.01:1**) and `#c9472f` (**4.75:1**). Lesson worth keeping: when you pick
+  a mid-tone brand colour, compute the ratio against `--on-fill` before shipping it —
+  a colour that "looks fine" at 3.3:1 is not fine.
 
 - **An archived group is frozen, including its invite link.** A database trigger rejects
   inserts/updates on `group_members`, `expenses` and `settlements` belonging to an archived
@@ -125,16 +132,19 @@ Park these; none block the current work. Rough order to address them:
   to `(select auth.uid())` in policies so Postgres evaluates once per query, not per row.
   Lowest severity. Bundle with A2.
 
-### Design debt (created by the retheme, cheap to clear)
+### Design debt (one item left)
 - **Retheme the dark block.** Pick the teal/coral equivalents for `--brand`,
   `--brand-hover`, `--brand-soft`, the grounds and the rules, and redefine `--accent` so
-  coral works on a dark ground. One edit to `app/globals.css`, no component changes.
-- **Fix button text contrast** (see section 3). Either darken `--brand`/`--accent`, or
-  keep the fills and accept that button labels fail AA — but decide it rather than
-  inherit it.
-- **Icon and manifest still carry the navy.** `public/icon.svg` (the source the PNG set
-  is generated from), `manifest.ts`'s `theme_color`, and `layout.tsx`'s viewport
-  `themeColor` pair are all still Khata navy/paper. The app is teal; its icon is not.
+  coral works on a dark ground (dark mode's `--on-fill` is charcoal, not white, so check
+  the ratio both ways). One edit to `app/globals.css`, no component changes.
+- ~~Fix button text contrast~~ — done, commit 52fb194. See section 3.
+- ~~Icon and manifest still carry the navy~~ — done, commit 52fb194. `public/icon.svg`,
+  all five PNGs, `favicon.ico`, `manifest.ts` and the viewport `themeColor` are teal.
+  **The icon is regenerated from the SVG by a script, not by hand** — see HANDOFF.md
+  "Regenerating the icons". One thing was left deliberately: the double rule in the icon
+  is still `--credit` green `#1f6b4a`, which against navy was a clear signal but against
+  teal is a near neighbour. The mark reads a bit monochrome now. Changing it means either
+  spending the reserved green or adding a fourth colour, so it is a brand call, not a bug.
 
 ### User-facing gaps (not blocking, but someone will hit these)
 - **Build an "Archived groups" / un-archive screen.** Archiving works, but there is **no way
@@ -162,7 +172,8 @@ Park these; none block the current work. Rough order to address them:
   To let real testers log in you must set up a proper sender (Resend) with a VERIFIED
   DOMAIN. Resend's free/test mode without a domain only emails your own address. So:
   buy a cheap domain → verify it in Resend → connect Resend to Supabase SMTP. Login flow
-  itself already works (magic link via token-hash, works across browsers/devices).
+  itself already works across browsers and devices (see HANDOFF.md §4 for how, and why
+  the callback must stay a client page).
 - **Privacy policy + basic terms.** Even simple ones, before public launch.
 - **Backups / recovery plan.** Know Supabase's backup retention on your plan before real
   users' financial history exists. Losing expense history would be trust-fatal.
