@@ -11,9 +11,10 @@ node_modules/
 .pnp.*
 
 # Next.js
-/.next/
-/out/
-/build
+# Unanchored so they match inside the frontend/ workspace, not just the repo root.
+.next/
+out/
+build/
 next-env.d.ts
 *.tsbuildinfo
 
@@ -21,8 +22,10 @@ next-env.d.ts
 .vercel
 
 # Supabase CLI local state
-supabase/.temp/
-supabase/.branches/
+# The CLI project moved to database/supabase/, so the old root-anchored patterns
+# stopped matching and .temp/ started showing up as untracked. Unanchored now.
+**/supabase/.temp/
+**/supabase/.branches/
 
 # Claude Code — machine-specific local settings (shared .claude/settings.json is fine)
 .claude/settings.local.json

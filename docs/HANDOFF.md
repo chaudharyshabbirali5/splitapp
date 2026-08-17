@@ -21,7 +21,9 @@ _Written 2026-08-16, at commit `52fb194`._
 | **DECISIONS_AND_BACKLOG.md** | Why things are the way they are + the to-do list. |
 | **PRD.md** | Product requirements. Source of truth for *what* to build. |
 | **TRD.md** | Technical requirements. Source of truth for *how*. Section 12 is the build plan; Section 11 is the "never do this" list. |
-| **splitapp.sql** | The original validated schema. **Frozen. Never edit.** |
+| **../README.md** | Repo tour + the commands. First stop for a new contributor. |
+| **../database/README.md** | How to run migrations and tests; the SQL conventions. |
+| **../database/splitapp.sql** | The original validated schema. **Frozen. Never edit.** |
 
 PRD.md and TRD.md were written before any code. They are still authoritative — if
 something in the app contradicts them, that is a bug or a decision that needs recording
@@ -61,11 +63,62 @@ recurring use. Do not fork the model per use case.
 | Hosting | Vercel — auto-deploys on every push to `main` |
 | Live URL | https://splitapp-bice.vercel.app |
 | Database + Auth | Supabase (hosted Postgres 17.6), region **Mumbai / ap-south-1** |
-| Secrets | `.env.local` (gitignored, never committed) and Vercel env vars |
+| Secrets | `frontend/.env.local` (gitignored, never committed) and Vercel env vars |
+
+### Repository layout
+
+The repo is a **monorepo with two areas**, so two people can work without colliding:
+
+```
+frontend/     Next.js App Router PWA — the only npm workspace, owns every JS/TS dep
+  app/ lib/ public/ middleware.ts next.config.ts tsconfig.json
+  postcss.config.mjs eslint.config.mjs package.json
+  .env.local            ← the ONLY copy of the secrets (gitignored)
+database/     The Postgres layer — see database/README.md
+  splitapp.sql          ← FROZEN
+  supabase/config.toml
+  supabase/migrations/  ← applied in filename order, never edited
+  tests/acceptance-test.ts
+  seed/                 ← empty, no seed scripts yet
+docs/         HANDOFF · PRD · TRD · PROGRESS · DECISIONS_AND_BACKLOG
+package.json  Root: npm workspaces + scripts that proxy to the right folder. No deps.
+README.md
+```
+
+**The separation is purely organisational.** There is still no backend runtime of our own
+and adding one is forbidden (TRD §11). `database/` holds SQL and tests, not a server.
+
+Two layout details that are load-bearing, not arbitrary:
+
+- **Migrations live at `database/supabase/migrations/`, not `database/migrations/`.** The
+  Supabase CLI resolves migrations at `<workdir>/supabase/migrations` and has no flag or
+  config key to point it elsewhere — `--workdir` only selects the directory that
+  *contains* a `supabase/` folder. Flattening it would break `supabase db push`, so the
+  CLI's expected layout is kept and `--workdir database` is passed instead.
+- **`frontend/.env.local` is the single copy of the credentials.** The acceptance test
+  reads that file, resolving it from its own file location rather than the working
+  directory, so it runs identically from the repo root or from inside `database/`. Two
+  copies of a service-role key is two places to leak it from.
+
+### Deploying — the one manual setting
+
+**Vercel's Root Directory must be set to `frontend`** (Project → Settings → Build &
+Deployment → Root Directory). Until that is set, builds fail: Vercel looks for
+`package.json` with a `next` dependency at the repo root and the root `package.json`
+deliberately has no dependencies at all.
+
+**This cannot be done from `vercel.json`.** `rootDirectory` is not part of the
+`vercel.json` schema — Vercel validates the file and fails the build on unknown
+properties, so adding it makes things worse, not better. It is a project setting only.
+Once the Root Directory is `frontend`, Vercel also looks for `vercel.json` *inside*
+`frontend/`, so a root-level one would be ignored regardless.
+
+Environment variables stay configured in the Vercel dashboard as before; the Root
+Directory change does not affect them.
 
 **On the Supabase project:** it was created three times. First in Seoul, then rebuilt in
 Mumbai for latency, then rebuilt once more. Only the current Mumbai project matters; the
-project ref and keys are in `.env.local`. If you ever need the connection string, note
+project ref and keys are in `frontend/.env.local`. If you ever need the connection string, note
 that the **direct database host is IPv6-only** and this machine has no IPv6 egress —
 you must use the **session pooler** host (`aws-1-ap-south-1.pooler.supabase.com:5432`).
 That cost an hour the first time. Password special characters must be percent-encoded
@@ -148,9 +201,9 @@ grants it.
 the exact bug this rule exists to prevent.
 
 - Rupee strings are parsed to integer paise with a regex, and the fractional part is
-  parsed **as its own integer** (`lib/money.ts`).
+  parsed **as its own integer** (`frontend/lib/money.ts`).
 - All arithmetic is integer or BigInt, end to end, database included.
-- `lib/balances.ts`'s `toPaise()` **throws** rather than silently rounding if a value
+- `frontend/lib/balances.ts`'s `toPaise()` **throws** rather than silently rounding if a value
   couldn't survive the JSON round-trip. A loud failure beats quiet corruption.
 
 **Rounding an uneven split:** `base = amount / n`, remainder `rem = amount % n`, and the
@@ -208,7 +261,7 @@ Next.js 16.2 (App Router, Turbopack), React 19.2, TypeScript, Tailwind v4,
 /sw.js                        service worker, served from a route handler
 ```
 
-### `lib/`
+### `frontend/lib/`
 
 - `money.ts` — rupee ⇄ paise, formatting
 - `balances.ts` — `toPaise`, `sumNets`, `simplifyDebts`, `applyPayments`
@@ -247,7 +300,7 @@ is added later nothing breaks.
 
 ### PWA
 
-- Manifest via `app/manifest.ts`; icons in `public/`.
+- Manifest via `frontend/app/manifest.ts`; icons in `frontend/public/`.
 - The service worker is served from **a route handler, not a static file**, so it can
   embed the deploy's commit SHA. A static `sw.js` has identical bytes every deploy, so
   the browser never sees a change and never activates the new one.
@@ -274,7 +327,7 @@ final". It marks both on-screen invariants: balances summing to zero, and shares
 to the exact expense.
 
 **All colour is a token.** The palette lives in CSS custom properties at the top of
-`app/globals.css` and reaches Tailwind through `@theme inline`. No component file
+`frontend/app/globals.css` and reaches Tailwind through `@theme inline`. No component file
 contains a hex value. That is why the whole app was rethemed from navy to teal by
 editing ~25 lines. **If you find yourself typing `bg-teal-600` in a screen, stop and add
 a token instead.**
@@ -284,7 +337,7 @@ ground `#faf7f2`. Both fills clear WCAG AA against white text (5.01:1 and 4.75:1
 
 ### Regenerating the icons
 
-`public/icon.svg` is the **source of truth**. The five PNGs and `favicon.ico` are
+`frontend/public/icon.svg` is the **source of truth**. The five PNGs and `favicon.ico` are
 generated from it — never hand-edited. The generator uses `sharp` (which ships
 transitively with Next) and lives outside the repo; it:
 
@@ -363,7 +416,7 @@ rejects writes to `group_members`, `expenses` and `settlements` in an archived g
 **which means an invite link shared months ago also stops working**, not just the UI.
 Nothing is destroyed; clearing `archived_at` brings the group back intact.
 
-The `groups_delete` policy in `splitapp.sql` is therefore effectively dead code.
+The `groups_delete` policy in `database/splitapp.sql` is therefore effectively dead code.
 
 ---
 
@@ -374,7 +427,7 @@ shape, and they should continue.
 
 ### The hard rules
 
-1. **Never edit `splitapp.sql` or an existing migration.** Ever. Changes are always a
+1. **Never edit `database/splitapp.sql` or an existing migration.** Ever. Changes are always a
    **new additive migration**. The base schema was validated before any code was written
    and is treated as frozen.
 2. **`npm run test:acceptance` must stay at 51 passed / 0 failed.** Run it after any
@@ -479,7 +532,7 @@ isn't redefined in the dark block either, so coral inherits dark mode's charcoal
 
 **In order.**
 
-1. **Finish the dark-mode retheme.** One edit to `app/globals.css`, no component changes.
+1. **Finish the dark-mode retheme.** One edit to `frontend/app/globals.css`, no component changes.
    Pick teal/coral equivalents for `--brand`, `--brand-hover`, `--brand-soft`, the
    grounds and the rules; redefine `--accent` for a dark ground. Check contrast **both
    ways** — dark mode's `--on-fill` is charcoal, not white.
@@ -539,12 +592,12 @@ Paste this at the start of a new session:
 > then `PROGRESS.md` and `DECISIONS_AND_BACKLOG.md` in the repo root before doing
 > anything.
 >
-> Hard rules: never edit `splitapp.sql` or any existing migration — changes are always a
+> Hard rules: never edit `database/splitapp.sql` or any existing migration — changes are always a
 > new additive migration. `npm run test:acceptance` must stay at 51 passed / 0 failed.
 > New RPCs get `search_path=public`, execute granted to `authenticated` only, revoked
 > from PUBLIC. Never disable RLS, never expose a table without a policy, never change a
 > function's SECURITY DEFINER/INVOKER setting. Nothing from TRD Section 11. All money is
-> integer paise, never floats. Colour goes in a token in `app/globals.css`, never a hex
+> integer paise, never floats. Colour goes in a token in `frontend/app/globals.css`, never a hex
 > in a component. `.env.local` stays gitignored and secrets never appear in chat.
 >
 > Work one step at a time. Verify against reality — build, test, and probe the live URL

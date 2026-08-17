@@ -2,8 +2,8 @@
 **The project's living memory.** Open this when you think "why did I do it this way?"
 or "what was I supposed to fix before launch?" Keep it updated as things change.
 
-_Snapshot as of: after Step 8 (PWA), the A1 security fix, group archive, the design pass and the teal/coral retheme. Update the date whenever you edit._
-_Last updated: 2026-08-16 (after the contrast + icon fix, commit 52fb194)_
+_Snapshot as of: after Step 8 (PWA), the A1 security fix, group archive, the design pass, the teal/coral retheme and the monorepo restructure. Update the date whenever you edit._
+_Last updated: 2026-08-16 (after the monorepo restructure)_
 
 > New to this project, or a fresh AI session? Read **HANDOFF.md** first — it tells the
 > whole story from step 1 and explains how we work. This file is the "why" and the
@@ -50,7 +50,7 @@ for what to build and how; this file tracks decisions and what's left.
   same engine. Don't fork the data model per use case.
 
 - **All colour is a token; no component holds a hex value.** The palette lives in CSS
-  custom properties at the top of `app/globals.css` and reaches Tailwind through
+  custom properties at the top of `frontend/app/globals.css` and reaches Tailwind through
   `@theme inline`. The nine screens share one set of component classes (`.ledger`,
   `.btn-*`, `.field`, `.chip-*`, `.figure`, `.khata-label`). This is why the whole app
   could be rethemed from navy to teal by editing ~25 lines. Keep it that way: if you find
@@ -67,6 +67,17 @@ for what to build and how; this file tracks decisions and what's left.
   is set in IBM Plex Mono with tabular figures, so columns of money line up. This is what
   makes the app read as a record rather than as an interface — and it is doing the same
   job as the exact-paise arithmetic underneath.
+
+- **The monorepo split is organisational, not architectural.** `frontend/` and `database/`
+  exist so two people can work without colliding. There is still **no backend runtime of
+  our own** — `database/` holds SQL and tests, not a server, and TRD §11 still forbids
+  adding one. If someone reads the folder name and reaches for Express, that is the
+  mistake this note exists to prevent.
+
+- **One copy of the credentials, in `frontend/.env.local`.** Next.js needs them there, so
+  rather than keeping a second copy for the database tests, the test resolves that same
+  file from its own location on disk. Two copies of a service-role key is two places to
+  leak it from.
 
 - **Security model = Row-Level Security in the database**, because the app talks straight
   to Supabase. RLS policies ARE the security. Never disable RLS; never expose a table
@@ -91,7 +102,7 @@ for what to build and how; this file tracks decisions and what's left.
   cannot work with this schema: `groups` cascades to BOTH `group_members` and `expenses`,
   but `expense_splits.member_id -> group_members` is ON DELETE NO ACTION, so Postgres
   removes the member rows while splits still reference them. Tested — any group with
-  expenses refuses to delete. The `groups_delete` policy in splitapp.sql is therefore
+  expenses refuses to delete. The `groups_delete` policy in database/splitapp.sql is therefore
   effectively dead code for real groups.
 
 - **Light and dark are currently two different brands.** The teal/coral retheme changed
@@ -109,6 +120,18 @@ for what to build and how; this file tracks decisions and what's left.
   `#0b7d73` (**5.01:1**) and `#c9472f` (**4.75:1**). Lesson worth keeping: when you pick
   a mid-tone brand colour, compute the ratio against `--on-fill` before shipping it —
   a colour that "looks fine" at 3.3:1 is not fine.
+
+- **Vercel needs a dashboard change that no commit can make.** After the restructure the
+  project's **Root Directory must be set to `frontend`**. Until someone does that in
+  Project → Settings → Build & Deployment, every deploy fails — the root `package.json`
+  deliberately has no dependencies, so Vercel finds no Next.js app. `rootDirectory` is
+  **not** a valid `vercel.json` key (Vercel fails the build on unknown properties), so
+  this genuinely cannot be automated from the repo.
+
+- **Migrations sit at `database/supabase/migrations/`, one level deeper than you'd guess.**
+  The Supabase CLI resolves them at `<workdir>/supabase/migrations` with no override, so
+  flattening to `database/migrations/` would break `supabase db push`. Kept the CLI's
+  layout and pass `--workdir database`. Don't "tidy" this.
 
 - **An archived group is frozen, including its invite link.** A database trigger rejects
   inserts/updates on `group_members`, `expenses` and `settlements` belonging to an archived
@@ -136,9 +159,9 @@ Park these; none block the current work. Rough order to address them:
 - **Retheme the dark block.** Pick the teal/coral equivalents for `--brand`,
   `--brand-hover`, `--brand-soft`, the grounds and the rules, and redefine `--accent` so
   coral works on a dark ground (dark mode's `--on-fill` is charcoal, not white, so check
-  the ratio both ways). One edit to `app/globals.css`, no component changes.
+  the ratio both ways). One edit to `frontend/app/globals.css`, no component changes.
 - ~~Fix button text contrast~~ — done, commit 52fb194. See section 3.
-- ~~Icon and manifest still carry the navy~~ — done, commit 52fb194. `public/icon.svg`,
+- ~~Icon and manifest still carry the navy~~ — done, commit 52fb194. `frontend/public/icon.svg`,
   all five PNGs, `favicon.ico`, `manifest.ts` and the viewport `themeColor` are teal.
   **The icon is regenerated from the SVG by a script, not by hand** — see HANDOFF.md
   "Regenerating the icons". One thing was left deliberately: the double rule in the icon

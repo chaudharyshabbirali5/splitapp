@@ -3,35 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "SplitApp — shared expense splitting. Next.js App Router + Supabase (Postgres + RLS).",
+  "description": "SplitApp — India-first group expense splitting with real UPI settle-up. Monorepo: frontend/ (Next.js) + database/ (Supabase).",
+  "workspaces": [
+    "frontend"
+  ],
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint",
-    "db:push": "supabase db push",
-    "test:acceptance": "tsx scripts/acceptance-test.ts"
-  },
-  "dependencies": {
-    "@supabase/ssr": "^0.12.3",
-    "@supabase/supabase-js": "^2.47.10",
-    "next": "16.2.12",
-    "react": "19.2.4",
-    "react-dom": "19.2.4"
-  },
-  "devDependencies": {
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^24.0.0",
-    "@types/pg": "^8.11.10",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "dotenv": "^16.4.7",
-    "eslint": "^9",
-    "eslint-config-next": "16.2.12",
-    "pg": "^8.13.1",
-    "supabase": "^2.22.6",
-    "tailwindcss": "^4",
-    "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "dev": "npm run dev --workspace frontend",
+    "build": "npm run build --workspace frontend",
+    "start": "npm run start --workspace frontend",
+    "lint": "npm run lint --workspace frontend",
+    "typecheck": "npm run typecheck --workspace frontend",
+    "db:push": "supabase db push --workdir database",
+    "db:diff": "supabase db diff --workdir database",
+    "test:acceptance": "tsx database/tests/acceptance-test.ts"
   }
 }

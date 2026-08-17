@@ -3,10 +3,24 @@
 to explain where the project stands. For the "why" behind decisions and the to-do list,
 see DECISIONS_AND_BACKLOG.md.
 
-_Last updated: 2026-08-16 — after the contrast + icon fix (commit 52fb194)_
+_Last updated: 2026-08-16 — after the monorepo restructure_
 
 > New to this project, or a fresh AI session? Read **HANDOFF.md** first — it tells the
 > whole story from step 1, the decisions and why, and how we work.
+
+## Repo layout (changed — read this if you have an older mental model)
+```
+frontend/   Next.js PWA — the only npm workspace, owns every JS/TS dependency
+database/   splitapp.sql (frozen) · supabase/migrations/ · tests/ — see its README
+docs/       these files
+package.json  root: workspaces + scripts that proxy to the right folder, no deps
+```
+All commands still run from the repo root: `npm run dev`, `npm run build`,
+`npm run test:acceptance`, `npm run db:push`. Nothing about the app changed — this was a
+file move.
+
+**⚠️ Vercel's Root Directory must be set to `frontend` in the dashboard** or deploys fail.
+It cannot be set from `vercel.json`. See HANDOFF.md §2.
 
 ---
 
@@ -43,13 +57,14 @@ _Last updated: 2026-08-16 — after the contrast + icon fix (commit 52fb194)_
 | — | **Design pass** — one token system, new type, new icon, all 9 screens | ✅ done — commit 9d89434 |
 | — | Retheme to teal / coral / cream (light mode only) | ✅ done — commit 97b9fbe |
 | — | WCAG contrast fix + teal icon, manifest and browser chrome | ✅ done — commit 52fb194 |
+| — | Monorepo restructure: `frontend/` + `database/` + `docs/` | ✅ done — file move only, 51/0 held |
 
 **v1 is feature-complete and themed.** Create groups → add people (incl. those not on
 the app) → split expenses → see who owes whom → settle over UPI → installed on a phone,
 with account isolation holding down to the browser cache.
 
 ## How the styling works now
-All colour lives in CSS custom properties at the top of `app/globals.css`, exposed to
+All colour lives in CSS custom properties at the top of `frontend/app/globals.css`, exposed to
 Tailwind via `@theme inline`. No component file contains a hex value or a `zinc-`/`red-`
 utility. To change the look, change the tokens — not the screens.
 
@@ -88,8 +103,8 @@ utility. To change the look, change the tokens — not the screens.
   balance row. Shortening them in Profile improves the app more than any palette change.
 
 ## Working conventions (for any AI coding session)
-- Never edit `splitapp.sql` or existing migrations — add NEW additive migrations.
-- Keep `npm run test:acceptance` at 51/0 after any change.
+- Never edit `database/splitapp.sql` or existing migrations — add NEW additive migrations.
+- Keep `npm run test:acceptance` at 51/0 after any change (run it from the repo root).
 - New RPCs: `search_path=public`, grant to `authenticated` only, revoke from public.
 - `.env.local` stays gitignored and never committed. Secrets never pasted into chat.
 - Work one step at a time; verify on the live URL before moving on.

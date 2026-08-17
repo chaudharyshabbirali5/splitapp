@@ -19,11 +19,20 @@
  * Money is read as BigInt everywhere. No floats touch an amount. (Invariant #1)
  */
 
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { createClient } from '@supabase/supabase-js';
 import pg from 'pg';
 import { config as loadEnv } from 'dotenv';
 
-loadEnv({ path: '.env.local', quiet: true });
+// Resolved from THIS FILE's location, not the working directory, so the test
+// behaves identically whether it is run from the repo root
+// (`npm run test:acceptance`) or from inside database/. The credentials live in
+// the frontend workspace because Next.js needs them there; the database layer
+// just reads the same file rather than keeping a second copy of the secrets.
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+loadEnv({ path: path.resolve(HERE, '../../frontend/.env.local'), quiet: true });
 
 // ---------------------------------------------------------------- env
 
