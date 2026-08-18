@@ -19,8 +19,11 @@ All commands still run from the repo root: `npm run dev`, `npm run build`,
 `npm run test:acceptance`, `npm run db:push`. Nothing about the app changed — this was a
 file move.
 
-**⚠️ Vercel's Root Directory must be set to `frontend` in the dashboard** or deploys fail.
-It cannot be set from `vercel.json`. See HANDOFF.md §2.
+**Vercel needed no change.** The restructure deployed fine with Root Directory still at the
+repo root — Vercel detected the npm workspace and built `frontend/` on its own. Confirmed
+against the deployed commit SHA, not assumed. Setting Root Directory to `frontend` is a
+worthwhile optimisation later (it would skip rebuilds for `database/`- or `docs/`-only
+changes) but it is not required. See HANDOFF.md §2.
 
 ---
 

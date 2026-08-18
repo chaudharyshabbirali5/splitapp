@@ -52,9 +52,13 @@ You can also work inside a folder directly: `cd frontend && npm run dev` behaves
 
 ## Deployment
 
-Vercel auto-deploys `main`. **The project's Root Directory must be set to `frontend`** in
-the Vercel dashboard — see `docs/HANDOFF.md` §2 for why this cannot be done from
-`vercel.json`.
+Vercel auto-deploys `main`, and needs no special configuration — it detects the npm
+workspace and builds `frontend/` on its own. Setting the project's Root Directory to
+`frontend` is an optional optimisation (it skips rebuilds when only `database/` or `docs/`
+changed); it cannot be done from `vercel.json`. See `docs/HANDOFF.md` §2.
+
+To check which commit is live: `curl -s <site>/sw.js | head -1` — the service worker
+embeds the deploy's commit SHA.
 
 ## The rules that matter
 

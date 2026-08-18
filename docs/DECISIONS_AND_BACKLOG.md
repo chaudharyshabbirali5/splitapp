@@ -121,12 +121,21 @@ for what to build and how; this file tracks decisions and what's left.
   a mid-tone brand colour, compute the ratio against `--on-fill` before shipping it —
   a colour that "looks fine" at 3.3:1 is not fine.
 
-- **Vercel needs a dashboard change that no commit can make.** After the restructure the
-  project's **Root Directory must be set to `frontend`**. Until someone does that in
-  Project → Settings → Build & Deployment, every deploy fails — the root `package.json`
-  deliberately has no dependencies, so Vercel finds no Next.js app. `rootDirectory` is
-  **not** a valid `vercel.json` key (Vercel fails the build on unknown properties), so
-  this genuinely cannot be automated from the repo.
+- **Vercel needed no dashboard change — a prediction that turned out wrong.** The
+  restructure was expected to break deploys until Root Directory was set to `frontend`,
+  reasoning that the root `package.json` has no dependencies so Vercel would find no
+  Next.js app. It deployed fine on the first try: Vercel detected the npm workspace and
+  built `frontend/` unaided. Verified against the deployed commit SHA, not assumed —
+  `/sw.js` embeds `VERCEL_GIT_COMMIT_SHA`, which makes it a genuinely useful
+  deploy-identity probe worth remembering:
+  `curl -s <site>/sw.js | head -1`.
+  Recorded because the wrong version of this note briefly shipped in the docs, and
+  because commit `02b9430`'s message still contains the incorrect "ACTION REQUIRED"
+  warning — the commit message cannot be corrected after pushing, so this entry is the
+  correction. Setting Root Directory remains a worthwhile **optimisation** (it would skip
+  rebuilds on `database/`- or `docs/`-only pushes) but is not required. `rootDirectory` is
+  still **not** a valid `vercel.json` key — Vercel fails the build on unknown properties —
+  so that part stands.
 
 - **Migrations sit at `database/supabase/migrations/`, one level deeper than you'd guess.**
   The Supabase CLI resolves them at `<workdir>/supabase/migrations` with no override, so

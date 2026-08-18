@@ -100,21 +100,36 @@ Two layout details that are load-bearing, not arbitrary:
   directory, so it runs identically from the repo root or from inside `database/`. Two
   copies of a service-role key is two places to leak it from.
 
-### Deploying — the one manual setting
+### Deploying — Vercel handled the monorepo by itself
 
-**Vercel's Root Directory must be set to `frontend`** (Project → Settings → Build &
-Deployment → Root Directory). Until that is set, builds fail: Vercel looks for
-`package.json` with a `next` dependency at the repo root and the root `package.json`
-deliberately has no dependencies at all.
+**No dashboard change was needed.** This was predicted to break and it did not, so the
+correction is recorded here rather than left as folklore: the restructure commit
+(`02b9430`) deployed successfully with the Root Directory still at the repo root. Vercel
+detected the npm workspace and built the Next.js app inside `frontend/`.
 
-**This cannot be done from `vercel.json`.** `rootDirectory` is not part of the
+Verified rather than assumed — the service worker embeds `VERCEL_GIT_COMMIT_SHA`, so
+`/sw.js` is a deploy-identity probe:
+
+```
+curl -s https://splitapp-bice.vercel.app/sw.js | head -1
+# // SplitApp service worker — build 02b9430598d467729b9a66669e39fde79c8d839e
+```
+
+That matched the pushed commit, and `/login`, `/manifest.webmanifest`, `/icon.svg`,
+`/favicon.ico`, `/offline.html` and `/sw.js` all returned 200 with correct content types.
+`/groups` returned 307 to `/login`, which proves middleware is running too.
+
+**Setting Root Directory to `frontend` is still worth doing eventually**, as an
+optimisation rather than a fix: it lets Vercel skip rebuilds when only `database/` or
+`docs/` changed. Today every push rebuilds the app regardless of what was touched.
+
+**It cannot be done from `vercel.json` either way.** `rootDirectory` is not part of the
 `vercel.json` schema — Vercel validates the file and fails the build on unknown
-properties, so adding it makes things worse, not better. It is a project setting only.
-Once the Root Directory is `frontend`, Vercel also looks for `vercel.json` *inside*
-`frontend/`, so a root-level one would be ignored regardless.
+properties, so adding it would break deploys rather than configure them. It is a project
+setting only, and once it is set Vercel reads `vercel.json` from *inside* that directory,
+so a root-level one would be ignored.
 
-Environment variables stay configured in the Vercel dashboard as before; the Root
-Directory change does not affect them.
+Environment variables are unaffected by any of this.
 
 **On the Supabase project:** it was created three times. First in Seoul, then rebuilt in
 Mumbai for latency, then rebuilt once more. Only the current Mumbai project matters; the
