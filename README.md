@@ -52,10 +52,20 @@ You can also work inside a folder directly: `cd frontend && npm run dev` behaves
 
 ## Deployment
 
-Vercel auto-deploys `main`, and needs no special configuration — it detects the npm
-workspace and builds `frontend/` on its own. Setting the project's Root Directory to
-`frontend` is an optional optimisation (it skips rebuilds when only `database/` or `docs/`
-changed); it cannot be done from `vercel.json`. See `docs/HANDOFF.md` §2.
+Vercel auto-deploys `main`, but **three dashboard settings are required** and cannot be
+committed. Project → Settings → Build & Deployment:
+
+- **Root Directory: `frontend`.** Without it Vercel reads the root `package.json`, finds
+  no `next` dependency, and fails with *"No Next.js version detected."*
+- **Include files outside the Root Directory in the Build Step: Enabled.**
+  `package-lock.json` exists only at the repo root (standard npm workspaces), so without
+  this the install step has no lockfile.
+- **Skip deployments when there are no changes to the root directory: Enabled.** Already
+  on — pushes touching only `database/` or `docs/` skip the frontend rebuild.
+
+All three are set correctly today, but a fresh project or re-import starts without them.
+`rootDirectory` is **not** a valid `vercel.json` key — Vercel fails the build on unknown
+properties — so this is dashboard-only. See `docs/HANDOFF.md` §2.
 
 To check which commit is live: `curl -s <site>/sw.js | head -1` — the service worker
 embeds the deploy's commit SHA.

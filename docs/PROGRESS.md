@@ -3,7 +3,7 @@
 to explain where the project stands. For the "why" behind decisions and the to-do list,
 see DECISIONS_AND_BACKLOG.md.
 
-_Last updated: 2026-08-16 — after the monorepo restructure_
+_Last updated: 2026-08-16 — after the monorepo restructure; Vercel settings corrected_
 
 > New to this project, or a fresh AI session? Read **HANDOFF.md** first — it tells the
 > whole story from step 1, the decisions and why, and how we work.
@@ -19,11 +19,18 @@ All commands still run from the repo root: `npm run dev`, `npm run build`,
 `npm run test:acceptance`, `npm run db:push`. Nothing about the app changed — this was a
 file move.
 
-**Vercel needed no change.** The restructure deployed fine with Root Directory still at the
-repo root — Vercel detected the npm workspace and built `frontend/` on its own. Confirmed
-against the deployed commit SHA, not assumed. Setting Root Directory to `frontend` is a
-worthwhile optimisation later (it would skip rebuilds for `database/`- or `docs/`-only
-changes) but it is not required. See HANDOFF.md §2.
+**⚠️ Vercel needs three dashboard settings, and they are not optional.** Project →
+Settings → Build & Deployment. All three are currently set correctly on the live project,
+but a fresh project or a re-import starts without them:
+
+| Setting | Value |
+|---------|-------|
+| Root Directory | `frontend` — without it the build fails with "No Next.js version detected" |
+| Include files outside the Root Directory in the Build Step | **Enabled** — `package-lock.json` lives only at the repo root |
+| Skip deployments when there are no changes to the root directory | **Enabled** — already done; `database/`- and `docs/`-only pushes skip the rebuild |
+
+None of this can go in `vercel.json`; `rootDirectory` is not a valid key there. See
+HANDOFF.md §2.
 
 ---
 

@@ -3,7 +3,7 @@
 or "what was I supposed to fix before launch?" Keep it updated as things change.
 
 _Snapshot as of: after Step 8 (PWA), the A1 security fix, group archive, the design pass, the teal/coral retheme and the monorepo restructure. Update the date whenever you edit._
-_Last updated: 2026-08-16 (after the monorepo restructure)_
+_Last updated: 2026-08-16 (after the monorepo restructure; Vercel settings corrected)_
 
 > New to this project, or a fresh AI session? Read **HANDOFF.md** first — it tells the
 > whole story from step 1 and explains how we work. This file is the "why" and the
@@ -121,7 +121,38 @@ for what to build and how; this file tracks decisions and what's left.
   a mid-tone brand colour, compute the ratio against `--on-fill` before shipping it —
   a colour that "looks fine" at 3.3:1 is not fine.
 
-- **Vercel needed no dashboard change — a prediction that turned out wrong.** The
+- **Vercel REQUIRES three dashboard settings. This entry supersedes the one below it.**
+  Verified directly in Project → Settings → Build & Deployment, rather than inferred:
+
+  | Setting | Value | Why |
+  |---------|-------|-----|
+  | Root Directory | `frontend` | Without it Vercel reads the root `package.json`, finds no `next` dependency, and fails with **"No Next.js version detected."** |
+  | Include files outside the Root Directory in the Build Step | Enabled | `package-lock.json` exists **only** at the repo root — standard npm workspaces. Confirmed locally: `Test-Path package-lock.json, frontend/package-lock.json` → `True, False`. Scoped to `frontend/` without this, the install step has no lockfile. |
+  | Skip deployments when there are no changes to the root directory | Enabled | Already done. `database/`- and `docs/`-only pushes skip the frontend rebuild. Not a future optimisation. |
+
+  `rootDirectory` is still **not** a valid `vercel.json` key — Vercel fails the build on
+  unknown properties — so that one detail of the original note was always correct and
+  survives. This is dashboard-only configuration.
+
+  **What went wrong, and it is worth understanding rather than just noting.** Commit
+  `02b9430` shipped the correct warning. Then the restructure deployed successfully on the
+  first push, and commit `b15b68a` retracted the warning on that basis — reasoning "the
+  build succeeded, therefore no dashboard setting was needed."
+
+  That inference is invalid. **The settings were already configured before the push.** The
+  build succeeded *because of* them, not in spite of their absence. The unconfigured case
+  was never tested, and the dashboard was never looked at. A green build tells you the
+  settings currently in place are sufficient; it tells you nothing whatsoever about *which*
+  settings are in place. Treating a successful outcome as evidence about an unobserved
+  configuration is the error, and it is an easy one to repeat with any hosted platform
+  whose state lives outside the repo.
+
+  So: `02b9430`'s message carries the original warning and was right. `b15b68a` wrongly
+  retracted it. This entry restores it with evidence. Git history is not rewritten — the
+  wrong turn stays visible, which is the point of keeping the entry below.
+
+- **[SUPERSEDED by the entry above — this reasoning was wrong. Kept for the trail.]**
+  **Vercel needed no dashboard change — a prediction that turned out wrong.** The
   restructure was expected to break deploys until Root Directory was set to `frontend`,
   reasoning that the root `package.json` has no dependencies so Vercel would find no
   Next.js app. It deployed fine on the first try: Vercel detected the npm workspace and

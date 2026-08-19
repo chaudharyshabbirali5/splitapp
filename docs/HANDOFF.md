@@ -100,36 +100,42 @@ Two layout details that are load-bearing, not arbitrary:
   directory, so it runs identically from the repo root or from inside `database/`. Two
   copies of a service-role key is two places to leak it from.
 
-### Deploying — Vercel handled the monorepo by itself
+### Deploying — three settings that are NOT optional
 
-**No dashboard change was needed.** This was predicted to break and it did not, so the
-correction is recorded here rather than left as folklore: the restructure commit
-(`02b9430`) deployed successfully with the Root Directory still at the repo root. Vercel
-detected the npm workspace and built the Next.js app inside `frontend/`.
+Vercel auto-deploys `main`, but the monorepo layout requires **dashboard configuration
+that no commit can supply**. Project → Settings → Build & Deployment:
 
-Verified rather than assumed — the service worker embeds `VERCEL_GIT_COMMIT_SHA`, so
-`/sw.js` is a deploy-identity probe:
+| Setting | Value | Why it is required |
+|---------|-------|--------------------|
+| **Root Directory** | `frontend` | Without it Vercel reads the **root** `package.json`, finds no `next` dependency, and fails the build with **"No Next.js version detected."** The root package deliberately has no dependencies at all — it is only workspaces plus proxy scripts. |
+| **Include files outside the Root Directory in the Build Step** | **Enabled** | `package-lock.json` exists **only at the repo root** — standard npm-workspaces behaviour, and there is no `frontend/package-lock.json`. With the Root Directory scoped to `frontend/`, disabling this leaves the install step with no lockfile. |
+| **Skip deployments when there are no changes to the root directory or its dependencies** | **Enabled** | Pushes that touch only `database/` or `docs/` skip the frontend rebuild. Already on — this is done, not a future optimisation. |
+
+All three are **currently set correctly** on the live project. Do not assume they are
+defaults: a fresh Vercel project, or a re-import of this repo, starts without them and
+will fail on the first build.
+
+**None of this can move into `vercel.json`.** `rootDirectory` is not part of the
+`vercel.json` schema — Vercel validates the file and fails the build on unknown
+properties, so adding it breaks deploys rather than configuring them. It is dashboard-only
+configuration. And once Root Directory is `frontend`, Vercel reads `vercel.json` from
+*inside* that directory, so a root-level one would be ignored regardless.
+
+Environment variables are unaffected by any of this.
+
+### Checking which commit is actually live
+
+The service worker embeds `VERCEL_GIT_COMMIT_SHA`, which makes `/sw.js` a deploy-identity
+probe:
 
 ```
 curl -s https://splitapp-bice.vercel.app/sw.js | head -1
 # // SplitApp service worker — build 02b9430598d467729b9a66669e39fde79c8d839e
 ```
 
-That matched the pushed commit, and `/login`, `/manifest.webmanifest`, `/icon.svg`,
-`/favicon.ico`, `/offline.html` and `/sw.js` all returned 200 with correct content types.
-`/groups` returned 307 to `/login`, which proves middleware is running too.
-
-**Setting Root Directory to `frontend` is still worth doing eventually**, as an
-optimisation rather than a fix: it lets Vercel skip rebuilds when only `database/` or
-`docs/` changed. Today every push rebuilds the app regardless of what was touched.
-
-**It cannot be done from `vercel.json` either way.** `rootDirectory` is not part of the
-`vercel.json` schema — Vercel validates the file and fails the build on unknown
-properties, so adding it would break deploys rather than configure them. It is a project
-setting only, and once it is set Vercel reads `vercel.json` from *inside* that directory,
-so a root-level one would be ignored.
-
-Environment variables are unaffected by any of this.
+Useful, but note what it does **not** tell you: that a build succeeded proves the settings
+in place are sufficient. It says nothing about which settings are in place. Confusing
+those two is exactly the mistake recorded in DECISIONS_AND_BACKLOG.md §3.
 
 **On the Supabase project:** it was created three times. First in Seoul, then rebuilt in
 Mumbai for latency, then rebuilt once more. Only the current Mumbai project matters; the
