@@ -1,86 +1,147 @@
 @import "tailwindcss";
 
 /* ─────────────────────────────────────────────────────────────────────────
-   Khata — the visual language of a shopkeeper's ledger.
+   SplitApp — globals.css
+   Drop-in replacement for app/globals.css.
 
-   Three rules hold the whole thing together:
+   Everything above the "ADDED" markers is your existing file, unchanged except
+   where noted. Three kinds of change:
 
-   1. Hairline rules do the work that cards, borders and shadows usually do.
-      A list of money is a ruled column, not a stack of boxes.
-   2. Every rupee figure is set in the mono face with tabular figures, so
-      columns of money line up down the page.
+     1. DARK BLOCK RETHEMED  — was pre-khata navy, now warm khata after dark,
+        and moved from prefers-color-scheme to [data-theme="dark"] so it can be
+        toggled (keep the media query too if you prefer system-only; see §DARK).
+     2. TOKENS ADDED         — radius scale, elevation, motion, paper tints.
+     3. CLASSES ADDED        — the mobile shell: .card, .tabbar, .sheet,
+        .avatar, .bubble, .segment-pill. Nothing existing was removed.
+
+   Khata still holds:
+   1. Hairline rules do the work cards and shadows usually do. A list of money
+      is a ruled column, not a stack of boxes. The soft card is a CONTAINER for
+      ruled rows, never a replacement for them.
+   2. Every rupee figure is mono with tabular figures, so columns line up.
    3. --credit and --debit are RESERVED. Green means somebody gets money back,
-      red means somebody owes. Neither is ever used for decoration, branding,
-      or "delete". Structural colour is ink, rule, or brand.
+      red means somebody owes. Never decoration, branding, or "delete".
+      --accent (coral) is RESERVED for settle up / pay.
    ───────────────────────────────────────────────────────────────────────── */
 
 :root {
   color-scheme: light;
 
-  --ground: #faf7f2;      /* the page — warm cream */
-  --surface: #ffffff;     /* things you type into */
-  --sunken: #f0ece5;      /* totals, hover, quiet fills */
+  --ground: #faf7f2;
+  --surface: #ffffff;
+  --sunken: #f0ece5;
 
   --ink: #2d2d2d;
   --ink-soft: #6b6b6b;
   --ink-faint: #9a9a9a;
 
-  --rule: #e5e0d8;        /* hairline between entries */
-  --rule-strong: #ccc5bb; /* borders you're meant to notice */
+  --rule: #e5e0d8;
+  --rule-strong: #ccc5bb;
 
-  /* Darkened from #0d9488 so white button text clears 4.5:1 (WCAG AA). */
   --brand: #0b7d73;
   --brand-hover: #096960;
   --brand-soft: #e0f5f3;
 
-  /* Coral. Reserved for the money-moving actions — settle up and pay — so
-     they read as the one thing on the screen that is not navigation.
-     Darkened from #e86552 for the same contrast reason as the teal. */
   --accent: #c9472f;
   --accent-hover: #b23d28;
 
-  --credit: #1f6b4a;      /* reserved: gets money back */
-  --debit: #9b2c2c;       /* reserved: owes money */
+  --credit: #1f6b4a;
+  --debit: #9b2c2c;
   --debit-soft: #f7ebe9;
   --pending: #7a5610;
   --pending-soft: #f3ecdc;
 
-  /* Text placed on a saturated fill (brand / accent / credit / debit buttons). */
   --on-fill: #ffffff;
 
   --radius: 6px;
+
+  /* ── ADDED: radius scale ─────────────────────────────────────────────
+     6px stays on anything ruled or typed into. The soft scale is only for
+     the floating shell. Never mix radii within one element. */
+  --radius-md: 14px;
+  --radius-lg: 22px;
+  --radius-xl: 28px;
+  --radius-pill: 999px;
+
+  /* ── ADDED: paper tints — avatar fills and balance bubbles ONLY ────── */
+  --tint-teal: #d7efec;
+  --tint-coral: #fbe3dd;
+  --tint-sand: #f3e8d3;
+  --tint-olive: #e8eddc;
+  --tint-slate: #e3e9ef;
+  --tint-mauve: #ece2ea;
+
+  /* ── ADDED: elevation. Warm ink over cream, never grey-blue. Only ever
+     lifts a FLOATING element. A shadow never replaces a hairline. ────── */
+  --shadow-soft: 0 1px 2px rgba(45, 45, 45, 0.04), 0 8px 24px -12px rgba(45, 45, 45, 0.10);
+  --shadow-lift: 0 2px 4px rgba(45, 45, 45, 0.05), 0 16px 32px -16px rgba(45, 45, 45, 0.16);
+  --shadow-fab: 0 6px 16px -4px rgba(45, 45, 45, 0.30);
+  --shadow-sheet: 0 -8px 40px -12px rgba(45, 45, 45, 0.22);
+
+  /* ── ADDED: motion. Your 0.12s ease, plus two longer durations for the
+     sheet. No bounce, no spring. ─────────────────────────────────────── */
+  --dur-fast: 120ms;
+  --dur: 200ms;
+  --dur-slow: 320ms;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.3, 1);
+
+  /* ── ADDED: layout ─────────────────────────────────────────────────── */
+  --gutter: 20px;
+  --tap-min: 44px;
+  --tabbar-h: 64px;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
+/* ── DARK: RETHEMED ───────────────────────────────────────────────────────
+   The old block was the pre-khata navy set. This is the same khata identity
+   after dark: not an inversion, not a second palette. The ground keeps the
+   paper's warm bias so it reads as an ink-stained ledger board rather than
+   blue-grey UI chrome. Teal and coral are the light hues lifted in lightness
+   and dropped in saturation to hold 4.5:1 on it. credit / debit / pending
+   keep their exact meanings. The one role that inverts is the add button:
+   ink-black on cream becomes cream on ink (it uses --ink / --ground, so this
+   happens for free).
 
-    /* Not an inversion: the dark ground keeps the same slight green-grey
-       bias as the paper, so the brand and the reserved colours still read
-       as the same hues rather than washing out. */
-    --ground: #12161a;
-    --surface: #181d22;
-    --sunken: #1e242a;
+   Opt-in via <html data-theme="dark">. To follow the system instead, add:
+     @media (prefers-color-scheme: dark) { :root:not([data-theme='light']) { …same values… } }
+   Recommended: honour the system by default AND let the user override, since
+   a ledger gets read in bed.
+   ─────────────────────────────────────────────────────────────────────── */
+[data-theme='dark'] {
+  color-scheme: dark;
 
-    --ink: #e7eae4;
-    --ink-soft: #9aa4ae;
-    --ink-faint: #6d7883;
+  --ground: #1a1815;
+  --surface: #221f1b;
+  --sunken: #2a2620;
 
-    --rule: #2a3138;
-    --rule-strong: #3f4851;
+  --ink: #f0ece5;
+  --ink-soft: #a8a29a;
+  --ink-faint: #948d84;  /* 5.4:1 on --ground — carries every 11px label and 12px hint */
 
-    --brand: #8fb2d4;
-    --brand-hover: #a9c6e0;
-    --brand-soft: #1c2733;
+  --rule: #302c26;
+  --rule-strong: #474137;
 
-    --credit: #63c295;
-    --debit: #e08c86;
-    --debit-soft: #2b1d1c;
-    --pending: #d9ab55;
-    --pending-soft: #2a2416;
+  --brand: #4fbfae;
+  --brand-hover: #6ad0bf;
+  --brand-soft: #14332e;
 
-    --on-fill: #101418;
-  }
+  --accent: #f0705a;
+  --accent-hover: #f78c78;
+
+  --credit: #5fc08d;
+  --debit: #e8837a;
+  --debit-soft: #33201d;
+  --pending: #d3a55a;
+  --pending-soft: #2e2617;
+
+  --on-fill: #16130f;
+
+  --tint-teal: #1e3b36;
+  --tint-coral: #3a2721;
+  --tint-sand: #37301f;
+  --tint-olive: #2b3122;
+  --tint-slate: #232a33;
+  --tint-mauve: #2f2630;
 }
 
 @theme inline {
@@ -97,10 +158,21 @@
 
   --color-brand: var(--brand);
   --color-brand-soft: var(--brand-soft);
+  --color-accent: var(--accent);
 
   --color-credit: var(--credit);
   --color-debit: var(--debit);
   --color-pending: var(--pending);
+
+  /* ADDED */
+  --color-tint-teal: var(--tint-teal);
+  --color-tint-coral: var(--tint-coral);
+  --color-tint-sand: var(--tint-sand);
+  --color-tint-olive: var(--tint-olive);
+  --color-tint-slate: var(--tint-slate);
+  --color-tint-mauve: var(--tint-mauve);
+
+  --radius-lg: var(--radius-lg);
 
   --font-sans: var(--font-ui);
   --font-mono: var(--font-figure);
@@ -113,320 +185,290 @@
     font-family: var(--font-ui), ui-sans-serif, system-ui, sans-serif;
   }
 
-  ::selection {
-    background: var(--brand-soft);
-    color: var(--ink);
-  }
+  ::selection { background: var(--brand-soft); color: var(--ink); }
 
-  :focus-visible {
-    outline: 2px solid var(--brand);
-    outline-offset: 2px;
-  }
+  :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 
-  h1,
-  h2,
-  h3 {
-    text-wrap: balance;
-  }
+  h1, h2, h3 { text-wrap: balance; }
 }
 
 @layer components {
   /* ── Type roles ──────────────────────────────────────────────────────── */
 
-  .page-title {
-    font-size: 1.5rem;
-    line-height: 1.15;
-    font-weight: 600;
-    letter-spacing: -0.02em;
-  }
+  .page-title { font-size: 1.5rem; line-height: 1.15; font-weight: 600; letter-spacing: -0.02em; }
 
-  /* The column heading in a ledger: small, spaced, never shouting. */
+  /* ADDED: the auth / hero size. */
+  .display-title { font-size: 2rem; line-height: 1.05; font-weight: 600; letter-spacing: -0.03em; }
+
   .khata-label {
     font-family: var(--font-figure), ui-monospace, monospace;
-    font-size: 0.6875rem;
-    line-height: 1;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--ink-faint);
+    font-size: 0.6875rem; line-height: 1; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--ink-faint);
   }
 
-  /* Every rupee amount on screen goes through this. */
   .figure {
     font-family: var(--font-figure), ui-monospace, monospace;
-    font-variant-numeric: tabular-nums;
-    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums; letter-spacing: -0.01em;
   }
 
-  .hint {
-    font-size: 0.75rem;
-    line-height: 1.45;
-    color: var(--ink-faint);
-  }
+  .hint { font-size: 0.75rem; line-height: 1.45; color: var(--ink-faint); }
 
   /* ── The ledger ──────────────────────────────────────────────────────── */
 
-  .ledger {
-    border-top: 1px solid var(--rule);
-    border-bottom: 1px solid var(--rule);
-  }
+  .ledger { border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+  .ledger > * + * { border-top: 1px solid var(--rule); }
 
-  .ledger > * + * {
-    border-top: 1px solid var(--rule);
-  }
+  /* ADDED: inside a .card the card's own edge closes the column, so drop the
+     outer rules. Use .ledger-flush on a .ledger that sits in a card. */
+  .ledger-flush { border-top: none; border-bottom: none; }
 
   .ledger-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    padding: 0.8rem 0.625rem;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 0.75rem; padding: 0.8rem 0.625rem;
   }
 
-  .ledger-link {
-    transition: background-color 0.12s ease;
-  }
+  .ledger-link { transition: background-color 0.12s ease; }
+  .ledger-link:hover { background: var(--sunken); }
 
-  .ledger-link:hover {
-    background: var(--sunken);
-  }
-
-  /* A double rule is the accountant's "this is the final figure". */
   .ledger-total {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    padding: 0.8rem 0.625rem;
-    border-top: 3px double var(--rule-strong);
-    background: var(--sunken);
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 0.75rem; padding: 0.8rem 0.625rem;
+    border-top: 3px double var(--rule-strong); background: var(--sunken);
   }
 
-  .ledger-total-bad {
-    border-top-color: var(--debit);
-    background: var(--debit-soft);
+  .ledger-total-bad { border-top-color: var(--debit); background: var(--debit-soft); }
+
+  .empty { border: 1px dashed var(--rule-strong); padding: 2.5rem 1.5rem; text-align: center; }
+
+  /* ── ADDED: the soft shell ───────────────────────────────────────────────
+     A card GROUPS a section. It draws no internal structure — put a
+     .ledger.ledger-flush inside and let hairlines do the work. Use .card-flush
+     when the ledger should reach the card edges. */
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius-lg);
+    padding: 1rem;
+    box-shadow: var(--shadow-soft);
+  }
+  .card-flush { padding: 0; overflow: hidden; }
+  .card-sunken { background: var(--sunken); border-color: transparent; box-shadow: none; }
+  .card-brand { background: var(--brand-soft); border-color: transparent; box-shadow: none; }
+
+  /* Floating bottom navigation. Fixed, inset by the gutter, above the inset. */
+  .tabbar {
+    position: fixed; left: var(--gutter); right: var(--gutter);
+    bottom: calc(var(--gutter) + var(--safe-bottom));
+    z-index: 30;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 0.5rem; height: var(--tabbar-h); padding: 0 0.75rem;
+    border-radius: var(--radius-pill);
+    background: var(--surface); border: 1px solid var(--rule);
+    box-shadow: var(--shadow-lift);
+  }
+  /* Scroll content must pad 120px at the bottom so the bar never covers a row. */
+
+  .tabbar-tab {
+    display: flex; align-items: center; justify-content: center;
+    width: var(--tap-min); height: var(--tap-min);
+    border-radius: var(--radius-pill);
+    color: var(--ink-faint); background: transparent;
+    transition: background-color 0.12s ease, color 0.12s ease;
+  }
+  .tabbar-tab[aria-current='page'] { background: var(--brand-soft); color: var(--brand); }
+
+  /* The only ink-black fill in the system. Inverts to cream in dark. */
+  .tabbar-add {
+    display: flex; align-items: center; justify-content: center;
+    width: 52px; height: 52px; margin: 0 0.5rem;
+    border-radius: var(--radius-pill);
+    background: var(--ink); color: var(--ground);
+    box-shadow: var(--shadow-fab);
+    transition: transform 0.12s ease;
+  }
+  .tabbar-add:active { transform: scale(0.97); }
+
+  /* Bottom sheet — the settle-up flow. */
+  .sheet-scrim {
+    position: fixed; inset: 0; z-index: 40;
+    background: rgba(45, 45, 45, 0.28); backdrop-filter: blur(2px);
+    opacity: 0; transition: opacity var(--dur) var(--ease-out);
+  }
+  .sheet-scrim[data-open='true'] { opacity: 1; }
+
+  .sheet {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 41;
+    max-height: 86%; overflow-y: auto;
+    background: var(--ground);
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    box-shadow: var(--shadow-sheet);
+    padding: 1rem var(--gutter) calc(1.25rem + var(--safe-bottom));
+    transform: translateY(100%);
+    transition: transform var(--dur-slow) var(--ease-out);
+  }
+  .sheet[data-open='true'] { transform: translateY(0); }
+
+  .sheet-grip {
+    width: 36px; height: 4px; margin: 0 auto 1rem;
+    border-radius: var(--radius-pill); background: var(--rule-strong);
   }
 
-  /* Nothing written on this page yet. */
-  .empty {
-    border: 1px dashed var(--rule-strong);
-    padding: 2.5rem 1.5rem;
-    text-align: center;
+  /* Avatar — initial on a paper tint. Assign the tint by hashing the display
+     name so it is stable per person. */
+  .avatar {
+    display: inline-flex; align-items: center; justify-content: center;
+    flex: 0 0 auto; border-radius: var(--radius-pill);
+    border: 1px solid rgba(45, 45, 45, 0.06);
+    font-family: var(--font-figure), ui-monospace, monospace;
+    font-weight: 500; line-height: 1; color: var(--ink);
+    user-select: none;
+  }
+  /* Placeholder member (user_id = null): dashed ring, no fill. */
+  .avatar-placeholder {
+    background: transparent; border: 1px dashed var(--rule-strong); color: var(--ink-faint);
+  }
+  .avatar-stack > * + * { margin-left: -30%; box-shadow: 0 0 0 2px var(--surface); }
+
+  /* Balance bubble — a tinted paper disc. Diameter and position are fractions
+     of the container WIDTH (0.42/0.26/0.30/0.24/0.20 at x 0.32/0.02/0.04/0.66/0.38,
+     y 0.00/0.04/0.32/0.40/0.44, container height = width * 0.64) so the five
+     never intersect at any column size. */
+  .bubble {
+    position: absolute; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 2px;
+    border-radius: var(--radius-pill); text-align: center;
   }
 
   /* ── Controls ────────────────────────────────────────────────────────── */
 
   .btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-    border: 1px solid transparent;
-    border-radius: var(--radius);
+    display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+    border: 1px solid transparent; border-radius: var(--radius);
     padding: 0.625rem 1rem;
-    font-size: 0.875rem;
-    font-weight: 500;
-    line-height: 1.25rem;
+    font-size: 0.875rem; font-weight: 500; line-height: 1.25rem;
+    white-space: nowrap;              /* ADDED: short verb labels never wrap */
     cursor: pointer;
-    transition:
-      background-color 0.12s ease,
-      border-color 0.12s ease,
-      color 0.12s ease;
+    transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
   }
 
-  .btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-block { width: 100%; }
+  .btn-sm { padding: 0.375rem 0.75rem; font-size: 0.8125rem; }
+  /* ADDED: the bottom CTA on a mobile screen. Meets the 44px tap minimum. */
+  .btn-lg { padding: 0.875rem 1.25rem; font-size: 0.9375rem; }
+  .btn-pill { border-radius: var(--radius-pill); }
 
-  .btn-block {
-    width: 100%;
-  }
+  .btn-primary { background: var(--brand); color: var(--on-fill); }
+  .btn-primary:hover:not(:disabled) { background: var(--brand-hover); }
 
-  .btn-sm {
-    padding: 0.375rem 0.75rem;
-    font-size: 0.8125rem;
-  }
+  .btn-accent { background: var(--accent); color: var(--on-fill); }
+  .btn-accent:hover:not(:disabled) { background: var(--accent-hover); }
 
-  .btn-primary {
-    background: var(--brand);
-    color: var(--on-fill);
-  }
+  .btn-quiet { border-color: var(--rule-strong); color: var(--ink); }
+  .btn-quiet:hover:not(:disabled) { background: var(--sunken); }
 
-  .btn-primary:hover:not(:disabled) {
-    background: var(--brand-hover);
-  }
+  .btn-credit { background: var(--credit); color: var(--on-fill); }
+  .btn-credit:hover:not(:disabled) { filter: brightness(1.08); }
 
-  /* Coral, and only on settle/pay: the actions that move real money. */
-  .btn-accent {
-    background: var(--accent);
-    color: var(--on-fill);
-  }
+  .btn-danger { border-color: var(--debit); color: var(--debit); }
+  .btn-danger:hover:not(:disabled) { background: var(--debit-soft); }
 
-  .btn-accent:hover:not(:disabled) {
-    background: var(--accent-hover);
-  }
+  .btn-danger-solid { background: var(--debit); color: var(--on-fill); }
+  .btn-danger-solid:hover:not(:disabled) { filter: brightness(1.08); }
 
-  .btn-quiet {
-    border-color: var(--rule-strong);
-    color: var(--ink);
-  }
-
-  .btn-quiet:hover:not(:disabled) {
-    background: var(--sunken);
-  }
-
-  /* Confirming money received is the one place green belongs on a control. */
-  .btn-credit {
-    background: var(--credit);
-    color: var(--on-fill);
-  }
-
-  .btn-credit:hover:not(:disabled) {
-    filter: brightness(1.08);
-  }
-
-  /* Destructive. Outlined until confirmed, solid once it means it. */
-  .btn-danger {
-    border-color: var(--debit);
-    color: var(--debit);
-  }
-
-  .btn-danger:hover:not(:disabled) {
-    background: var(--debit-soft);
-  }
-
-  .btn-danger-solid {
-    background: var(--debit);
-    color: var(--on-fill);
-  }
-
-  .btn-danger-solid:hover:not(:disabled) {
-    filter: brightness(1.08);
-  }
-
-  .btn-dead {
-    background: var(--sunken);
-    color: var(--ink-faint);
-    cursor: not-allowed;
-  }
+  .btn-dead { background: var(--sunken); color: var(--ink-faint); cursor: not-allowed; }
 
   .field {
     width: 100%;
-    border: 1px solid var(--rule-strong);
-    border-radius: var(--radius);
-    background: var(--surface);
-    color: var(--ink);
+    border: 1px solid var(--rule-strong); border-radius: var(--radius);
+    background: var(--surface); color: var(--ink);
     padding: 0.5rem 0.625rem;
-    font-size: 0.875rem;
-    outline: none;
+    min-height: var(--tap-min);       /* ADDED: PWA tap minimum */
+    font-size: 0.875rem; outline: none;
   }
 
-  .field::placeholder {
-    color: var(--ink-faint);
-  }
+  .field::placeholder { color: var(--ink-faint); }
+  .field:focus { border-color: var(--brand); box-shadow: inset 0 0 0 1px var(--brand); }
+  .field-label { display: block; font-size: 0.875rem; font-weight: 500; }
 
-  .field:focus {
-    border-color: var(--brand);
-    box-shadow: inset 0 0 0 1px var(--brand);
-  }
-
-  .field-label {
-    display: block;
-    font-size: 0.875rem;
-    font-weight: 500;
-  }
-
-  /* Amounts are typed in the same face they're read back in. */
   .field-amount {
     font-family: var(--font-figure), ui-monospace, monospace;
     font-variant-numeric: tabular-nums;
   }
 
-  /* Segmented picker (group type). Selected = inked in. */
-  .segment {
-    display: flex;
-    cursor: pointer;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid var(--rule-strong);
-    border-radius: var(--radius);
-    padding: 0.5rem;
-    font-size: 0.875rem;
-    transition:
-      background-color 0.12s ease,
-      border-color 0.12s ease,
-      color 0.12s ease;
+  /* ADDED: the amount input on Add expense — display size, on a brand card. */
+  .field-amount-hero {
+    width: 100%; border: none; background: transparent; outline: none;
+    font-family: var(--font-figure), ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 2rem; font-weight: 500; letter-spacing: -0.01em; color: var(--ink);
   }
 
-  .segment:has(:checked) {
-    background: var(--brand);
-    border-color: var(--brand);
-    color: var(--on-fill);
+  .segment {
+    display: flex; cursor: pointer; align-items: center; justify-content: center;
+    border: 1px solid var(--rule-strong); border-radius: var(--radius);
+    padding: 0.5rem; min-height: var(--tap-min); font-size: 0.875rem;
+    transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+  }
+
+  .segment:has(:checked) { background: var(--brand); border-color: var(--brand); color: var(--on-fill); }
+
+  /* ADDED: sunken pill track with a floating thumb — the in-screen mobile
+     variant (Equally / Custom). */
+  .segment-pill {
+    display: grid; gap: 0; padding: 3px;
+    background: var(--sunken); border-radius: var(--radius-pill);
+  }
+  .segment-pill > label {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 36px; padding: 0.5rem; cursor: pointer;
+    border-radius: var(--radius-pill);
+    font-size: 0.875rem; color: var(--ink-soft);
+    transition: background-color 0.12s ease, color 0.12s ease;
+  }
+  .segment-pill > label:has(:checked) {
+    background: var(--surface); color: var(--ink); font-weight: 500;
+    box-shadow: var(--shadow-soft);
   }
 
   /* ── Small pieces ────────────────────────────────────────────────────── */
 
   .chip {
-    display: inline-flex;
-    align-items: center;
-    border-radius: var(--radius);
-    padding: 0.125rem 0.375rem;
+    display: inline-flex; align-items: center;
+    border-radius: var(--radius); padding: 0.125rem 0.375rem;
     font-family: var(--font-figure), ui-monospace, monospace;
-    font-size: 0.625rem;
-    line-height: 1rem;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    white-space: nowrap;
+    font-size: 0.625rem; line-height: 1rem; letter-spacing: 0.08em;
+    text-transform: uppercase; white-space: nowrap;
   }
 
-  .chip-quiet {
-    background: var(--sunken);
-    color: var(--ink-soft);
-  }
-
-  .chip-joined {
-    background: var(--brand-soft);
-    color: var(--brand);
-  }
-
-  .chip-pending {
-    background: var(--pending-soft);
-    color: var(--pending);
-  }
+  .chip-quiet { background: var(--sunken); color: var(--ink-soft); }
+  .chip-joined { background: var(--brand-soft); color: var(--brand); }
+  .chip-pending { background: var(--pending-soft); color: var(--pending); }
 
   .notice-error {
-    border-left: 3px solid var(--debit);
-    background: var(--debit-soft);
-    padding: 0.75rem 0.875rem;
-    font-size: 0.875rem;
-    color: var(--debit);
+    border-left: 3px solid var(--debit); background: var(--debit-soft);
+    padding: 0.75rem 0.875rem; font-size: 0.875rem; color: var(--debit);
+  }
+
+  /* ADDED: same shape, for the pending-settlement explanation. */
+  .notice-pending {
+    border-left: 3px solid var(--pending); background: var(--pending-soft);
+    padding: 0.75rem 0.875rem; font-size: 0.875rem; color: var(--pending);
   }
 
   .link {
-    color: var(--ink-soft);
-    text-decoration: underline;
-    text-decoration-color: var(--rule-strong);
-    text-underline-offset: 3px;
+    color: var(--ink-soft); text-decoration: underline;
+    text-decoration-color: var(--rule-strong); text-underline-offset: 3px;
     transition: color 0.12s ease;
   }
+  .link:hover { color: var(--ink); text-decoration-color: currentColor; }
 
-  .link:hover {
-    color: var(--ink);
-    text-decoration-color: currentColor;
-  }
-
-  /* Back links read as a ledger annotation, not as body copy. */
   .link-back {
-    display: inline-block;
+    display: inline-flex; align-items: center; gap: 4px;
     font-family: var(--font-figure), ui-monospace, monospace;
-    font-size: 0.6875rem;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--ink-faint);
-    transition: color 0.12s ease;
+    font-size: 0.6875rem; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--ink-faint); transition: color 0.12s ease;
   }
-
-  .link-back:hover {
-    color: var(--ink);
-  }
+  .link-back:hover { color: var(--ink); }
 }

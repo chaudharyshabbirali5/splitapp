@@ -99,14 +99,18 @@ export function Pwa() {
   if (hidden || !installEvent) return null;
 
   return (
-    <div className="fixed inset-x-3 bottom-3 z-50 mx-auto flex max-w-md items-center gap-3 rounded-lg border border-zinc-200 bg-white px-4 py-3 shadow-lg dark:border-zinc-800 dark:bg-zinc-900">
+    // Sits above the floating tab bar (64px tall, 20px gutter), not under it.
+    <div
+      className="card fixed inset-x-5 z-50 mx-auto flex max-w-md items-center gap-3"
+      style={{ bottom: 'calc(var(--gutter) + var(--tabbar-h) + 12px + var(--safe-bottom))' }}
+    >
       <p className="min-w-0 flex-1 text-sm">
         Install SplitApp for quicker access.
       </p>
       <button
         type="button"
         onClick={install}
-        className="shrink-0 rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white dark:bg-zinc-100 dark:text-zinc-900"
+        className="btn btn-primary btn-sm shrink-0"
       >
         Install
       </button>
@@ -114,7 +118,7 @@ export function Pwa() {
         type="button"
         onClick={dismiss}
         aria-label="Dismiss install hint"
-        className="shrink-0 text-sm text-zinc-500 hover:text-black dark:hover:text-white"
+        className="link shrink-0 text-sm"
       >
         Not now
       </button>

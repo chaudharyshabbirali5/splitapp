@@ -3,6 +3,9 @@ import { IBM_Plex_Mono, Instrument_Sans } from "next/font/google";
 import "./globals.css";
 
 import { Pwa } from "./pwa";
+import { TabBar, TabBarSpacer } from "./tabbar";
+import { ThemeProvider } from "./theme-provider";
+import { ThemeScript } from "./theme-script";
 
 // Instrument Sans for everything you read, IBM Plex Mono for everything you
 // count. The mono face carries figures, labels and codes — it is what makes a
@@ -47,7 +50,7 @@ export const viewport: Viewport = {
   // extension of the paper rather than a band sitting on top of it.
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#faf7f2" },
-    { media: "(prefers-color-scheme: dark)", color: "#12161a" },
+    { media: "(prefers-color-scheme: dark)", color: "#1a1815" },
   ],
   width: "device-width",
   initialScale: 1,
@@ -63,9 +66,19 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${ui.variable} ${figure.variable} h-full antialiased`}
+      // The inline script sets data-theme before React hydrates, so the server
+      // markup and the first client render disagree by design.
+      suppressHydrationWarning
     >
+      <head>
+        <ThemeScript />
+      </head>
       <body className="min-h-full flex flex-col">
-        {children}
+        <ThemeProvider>
+          {children}
+          <TabBarSpacer />
+          <TabBar />
+        </ThemeProvider>
         <Pwa />
       </body>
     </html>
