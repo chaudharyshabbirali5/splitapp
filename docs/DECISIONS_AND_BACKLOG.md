@@ -3,7 +3,7 @@
 or "what was I supposed to fix before launch?" Keep it updated as things change.
 
 _Snapshot as of: after Step 8 (PWA), the A1 security fix, group archive, the design pass, the teal/coral retheme and the monorepo restructure. Update the date whenever you edit._
-_Last updated: 2026-08-16 (after the monorepo restructure; Vercel settings corrected)_
+_Last updated: 2026-08-30 (after the design-system adoption, theme control, tab bar, and the login + groups restructures)_
 
 > New to this project, or a fresh AI session? Read **HANDOFF.md** first — it tells the
 > whole story from step 1 and explains how we work. This file is the "why" and the
@@ -79,6 +79,33 @@ for what to build and how; this file tracks decisions and what's left.
   file from its own location on disk. Two copies of a service-role key is two places to
   leak it from.
 
+- **Dark mode is a user control, not a media query — and that was forced, not chosen.**
+  The design-system stylesheet triggers dark from `[data-theme="dark"]` and ships **no**
+  `prefers-color-scheme` block at all. Swapping the CSS without wiring a control would
+  therefore have left dark mode with nothing to activate it, so the two had to land in
+  the same commit (2a07c62). Three states — `light | dark | system` — persisted in
+  `localStorage`, with `system` *resolved* to a concrete value in JS because the
+  stylesheet cannot follow the OS by itself. The resolver lives in
+  `frontend/lib/theme.ts` and is shared by the pre-paint inline script and the React
+  provider **so the two cannot drift** — if you change one, change it there.
+  The inline script must stay in `<head>` and stay dependency-free: it exists to set the
+  attribute before first paint, and anything that delays it reintroduces the flash.
+
+- **The tab bar renders from the root layout, not from each screen.** That is what let
+  the shell land before any screen was redesigned — no `page.tsx` had to be touched. Its
+  visibility rules are plain functions in `frontend/lib/nav.ts`, deliberately free of
+  React imports so they can be tested directly; a tab bar that appears on the wrong
+  screen is exactly the sort of bug that rots silently. Bottom padding is supplied by
+  `TabBarSpacer` from the layout, because the scroll containers live inside each page.
+
+- **No raw Supabase, PostgREST or RLS string ever reaches the screen.** An RLS refusal
+  reads as "you can't see this", not as a policy name. Two real violations were fixed
+  during the Stage 4 work: the login screen rendered Supabase's own send error, and the
+  groups list rendered `error.message` verbatim. The login one also rendered
+  `?error=` straight from the URL — attacker-controlled text on a sign-in page, which is
+  a ready-made phishing lure even though React escapes it. Log the detail with
+  `console.error`; show a human sentence.
+
 - **Security model = Row-Level Security in the database**, because the app talks straight
   to Supabase. RLS policies ARE the security. Never disable RLS; never expose a table
   without a policy. Membership-check helper functions are SECURITY DEFINER (to avoid
@@ -105,13 +132,12 @@ for what to build and how; this file tracks decisions and what's left.
   expenses refuses to delete. The `groups_delete` policy in database/splitapp.sql is therefore
   effectively dead code for real groups.
 
-- **Light and dark are currently two different brands.** The teal/coral retheme changed
-  only the `:root` light block. The `@media (prefers-color-scheme: dark)` block still
-  holds the original Khata navy `--brand: #8fb2d4`, so the app is teal by day and navy
-  by night. `--accent` is not redefined there, so coral does carry into dark — but paired
-  with dark mode's `--on-fill: #101418`, the settle buttons get charcoal text on coral
-  rather than white. Deliberate ("for now"), and now the **only** thing left over from
-  the retheme. This is the next task.
+- **~~Light and dark are two different brands~~ — RESOLVED by the stylesheet swap
+  (2a07c62).** The design-system `globals.css` ships a real designed dark palette
+  (ground `#1a1815`, brand `#4fbfae`, accent `#f0705a`) keyed to `[data-theme="dark"]`,
+  so the navy leftover is gone and `--accent` is defined in both themes. Kept here
+  because the old note said dark was "the next task" and someone may still be carrying
+  that expectation.
 
 - **Button contrast was a real regression, and it is fixed.** The first retheme shipped
   `--brand: #0d9488` and `--accent: #e86552`, which gave white button text 3.7:1 and
@@ -173,6 +199,35 @@ for what to build and how; this file tracks decisions and what's left.
   flattening to `database/migrations/` would break `supabase db push`. Kept the CLI's
   layout and pass `--workdir database`. Don't "tidy" this.
 
+- **The groups home screen shows no balances, and that is deliberate — for now.** The
+  design calls for an overall-position card, balance bubbles, per-row credit/debit
+  figures and member avatar stacks. None of it shipped in 84fb85b, because the screen
+  loads **no balance data at all** — its query is
+  `groups(id, name, group_type, created_at)` and always was. Rendering the design would
+  have meant new reads, which was out of scope for a markup pass. The screen is correct
+  and complete for the data it has; it is not the finished design.
+
+  **The decision for when that work happens: add an all-groups RPC, do NOT loop
+  `group_balances`.** `group_balances(gid uuid)` takes a single group id and there is no
+  all-groups variant, so the obvious implementation is N+1 RPC calls on the home
+  screen — 23 round-trips at 20 groups, on the screen people open first. Preferred
+  approach is one small additive migration returning every group's net for the caller in
+  a single call (`security invoker`, so RLS still applies; `search_path=public`, granted
+  to `authenticated`, revoked from PUBLIC, per the house rules). That makes the screen
+  three queries flat at any group count.
+
+  The bubble geometry is recorded so it need not be rediscovered: diameters
+  `0.42 / 0.26 / 0.30 / 0.24 / 0.20` at x `0.32 / 0.02 / 0.04 / 0.66 / 0.38`,
+  y `0.00 / 0.04 / 0.32 / 0.40 / 0.44`, container height = width × `0.64`. Every value
+  is a fraction of container **width** — that is what stops the discs intersecting at
+  any column size. `.bubble` in `globals.css` documents the same numbers.
+
+- **The theme toggle exists but is not mounted anywhere.** `ThemeToggle` is built,
+  wired and working; it simply has no home yet, because its place is the Profile screen
+  and Profile is still to be restructured. Until then the theme follows the OS and can
+  only be changed by writing `localStorage['splitapp-theme']` by hand. Mounting it is a
+  one-line drop-in when Profile lands — do not rebuild it.
+
 - **An archived group is frozen, including its invite link.** A database trigger rejects
   inserts/updates on `group_members`, `expenses` and `settlements` belonging to an archived
   group — so an invite link shared months ago stops working too, not just the UI. Nothing
@@ -208,6 +263,16 @@ Park these; none block the current work. Rough order to address them:
   is still `--credit` green `#1f6b4a`, which against navy was a clear signal but against
   teal is a near neighbour. The mark reads a bit monochrome now. Changing it means either
   spending the reserved green or adding a fourth colour, so it is a brand call, not a bug.
+
+### UI work still open (Stage 4 and beyond)
+- **Finish the designed screens**, one route per commit: group detail (the archive /
+  danger zone **moves to Profile** — relocate it, don't just restyle it), add expense,
+  balances plus the settle sheet, and profile. Login (abdccb0) and groups home
+  (84fb85b, partial) are done.
+- **Wire the groups-home balance UI** — see section 3 for the deferred scope and the
+  all-groups-RPC decision. This is the one item with a database dependency.
+- **Mount the theme toggle on Profile.** Already built; see section 3.
+- **Custom split** on the add-expense screen is explicitly Stage 7, not Stage 4.
 
 ### User-facing gaps (not blocking, but someone will hit these)
 - **Build an "Archived groups" / un-archive screen.** Archiving works, but there is **no way

@@ -3,7 +3,7 @@
 to explain where the project stands. For the "why" behind decisions and the to-do list,
 see DECISIONS_AND_BACKLOG.md.
 
-_Last updated: 2026-08-16 — after the monorepo restructure; Vercel settings corrected_
+_Last updated: 2026-08-30 — after the design-system adoption, theme control, tab bar, and the login + groups restructures_
 
 > New to this project, or a fresh AI session? Read **HANDOFF.md** first — it tells the
 > whole story from step 1, the decisions and why, and how we work.
@@ -68,36 +68,66 @@ HANDOFF.md §2.
 | — | Retheme to teal / coral / cream (light mode only) | ✅ done — commit 97b9fbe |
 | — | WCAG contrast fix + teal icon, manifest and browser chrome | ✅ done — commit 52fb194 |
 | — | Monorepo restructure: `frontend/` + `database/` + `docs/` | ✅ done — file move only, 51/0 held |
+| — | Design-system stylesheet adopted + theme control + tab bar | ✅ done — commit 2a07c62 |
+| — | UI Stage 4: login screen restructured | ✅ done — commit abdccb0 |
+| — | UI Stage 4: groups home restructured (markup only) | ⚠️ partial — commit 84fb85b, balance UI deferred |
 
 **v1 is feature-complete and themed.** Create groups → add people (incl. those not on
 the app) → split expenses → see who owes whom → settle over UPI → installed on a phone,
 with account isolation holding down to the browser cache.
 
 ## How the styling works now
-All colour lives in CSS custom properties at the top of `frontend/app/globals.css`, exposed to
-Tailwind via `@theme inline`. No component file contains a hex value or a `zinc-`/`red-`
-utility. To change the look, change the tokens — not the screens.
+All colour lives in CSS custom properties at the top of `frontend/app/globals.css`,
+exposed to Tailwind via `@theme inline`. No component file contains a hex value or a
+`zinc-`/`dark:` utility. To change the look, change the tokens — not the screens.
 
-- Light mode: teal brand `#0b7d73`, coral accent `#c9472f`, warm cream ground `#faf7f2`.
-  Both fills clear WCAG AA against white button text (5.01:1 and 4.75:1) — keep it that
-  way if you retune them.
+- Light: teal brand `#0b7d73`, coral accent `#c9472f`, cream ground `#faf7f2`. Both
+  fills clear WCAG AA against white button text (5.01:1 and 4.75:1) — keep it that way
+  if you retune them.
+- Dark: ground `#1a1815`, brand `#4fbfae`, accent `#f0705a`. A real designed palette,
+  not an inversion.
 - **Coral is only for settle / pay.** Everything else that is a primary action is teal.
 - `--credit` (green) and `--debit` (red) are **reserved**: green means gets money back,
-  red means owes. Never use them for branding or for "delete".
+  red means owes. Never for branding, never for "delete".
 - Type: Instrument Sans for reading, IBM Plex Mono for every figure, UPI ID and label.
-- **Dark mode is still the old navy.** Only the `:root` light block was rethemed.
+
+### Dark mode is a control now, not a media query
+Dark is triggered by `[data-theme="dark"]` on `<html>` — the stylesheet ships **no**
+`prefers-color-scheme` block at all. Three states, persisted in `localStorage`:
+`light | dark | system`, where `system` is *resolved* to a concrete value because CSS
+alone cannot follow the OS here.
+
+- `frontend/lib/theme.ts` — the pure resolver, shared by the inline script and React so
+  the two cannot drift.
+- `frontend/app/theme-script.tsx` — runs in `<head>` before first paint, so there is no
+  flash of the wrong theme.
+- `frontend/app/theme-provider.tsx` — keeps following the OS while the preference is
+  `system`, and syncs across tabs.
+- `frontend/app/theme-toggle.tsx` — the three-state control. **Built but not mounted
+  yet**; its home is the Profile screen (Stage 4, still to come).
+
+### Chrome
+A floating tab bar (`frontend/app/tabbar.tsx`) renders from the root layout, not from
+each screen — which is how screens stay untouched until their own stage. Visibility is
+decided from the pathname by `frontend/lib/nav.ts`, which is plain functions and
+directly tested. Hidden on `/`, `/login`, `/auth/*`, `/join/*` and the expense forms.
+
 
 ---
 
 ## What's NEXT (in order)
-1. **Finish the retheme in dark mode.** Light is teal/coral; dark is still the old navy.
-   Small job, but the app currently has two different identities. See
+1. **Finish UI Stage 4** — the remaining designed screens, one route per commit:
+   group detail, add expense, balances (+ settle sheet), profile. Login and groups home
+   are done. Profile is where the theme toggle and the archive/danger zone land.
+2. **Wire the groups-home balance UI** — the position card, balance bubbles, per-row
+   figures and avatar stacks were deliberately deferred because the screen loads no
+   balance data. Needs a decision on the query shape first; see
    DECISIONS_AND_BACKLOG.md section 3.
-2. **Pre-launch gate: real email** — domain + Resend so people who aren't you can log in.
+3. **Pre-launch gate: real email** — domain + Resend so people who aren't you can log in.
    Required before inviting any outside tester.
-3. **Before public:** account-deletion strategy, privacy policy, backups, abuse controls
+4. **Before public:** account-deletion strategy, privacy policy, backups, abuse controls
    (see DECISIONS_AND_BACKLOG.md section 4).
-4. **Then:** put it in real hands (start with your own flat / friend group) and learn.
+5. **Then:** put it in real hands (start with your own flat / friend group) and learn.
 
 ## Housekeeping notes
 - 3 auth accounts exist, all yours (chaudharyshabbirali5@, chaudharyshabbirali88@,
