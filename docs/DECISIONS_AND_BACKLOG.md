@@ -3,7 +3,7 @@
 or "what was I supposed to fix before launch?" Keep it updated as things change.
 
 _Snapshot as of: after Step 8 (PWA), the A1 security fix, group archive, the design pass, the teal/coral retheme and the monorepo restructure. Update the date whenever you edit._
-_Last updated: 2026-08-31 (after my_group_positions() and the group_members uniqueness constraint)_
+_Last updated: 2026-08-31 (plus two decisions taken ahead of the gap-spec migrations)_
 
 > New to this project, or a fresh AI session? Read **HANDOFF.md** first — it tells the
 > whole story from step 1 and explains how we work. This file is the "why" and the
@@ -136,6 +136,40 @@ for what to build and how; this file tracks decisions and what's left.
   `is_deleted = false` / `status = 'confirmed'` filters, same `::bigint`), and **the
   acceptance suite asserts the two agree to the paise for every seeded group** — drift
   fails a test instead of shipping. If you change one, change the other.
+
+- **Cash settlements: the counterparty OR the group admin may record one — never any
+  member.** Placeholders have no account, so nobody can sign in as them to confirm a
+  payment; someone else has to record that cash changed hands. Two people are trusted to
+  do that and no more: the **counterparty** (the other side of the payment, who knows
+  whether they handed over or received the money) and the **group admin** (so a group
+  does not deadlock when the counterparty is unreachable). Any member being able to
+  assert that a payment happened would let a debtor clear their own debt unilaterally,
+  which is the same hole the A1 fix closed for UPI settlements.
+
+  **Enforced in the RPC, not left to RLS.** Today's `settle_insert` policy permits any
+  member, and this rule is narrower than that. Widening the policy is the wrong move: the
+  check is "you are one of these two specific people relative to THIS settlement", which
+  is exactly the sort of relational condition an RPC states clearly and a policy states
+  badly. The policy stays as the outer boundary; the RPC is where the rule lives.
+
+  **`recorded_by` is always stored and always shown.** Not nullable, not optional, not
+  hidden when it happens to equal the payer. A cash record is one person asserting
+  something about another person's money, and the ledger has to say who asserted it. The
+  feed distinguishes the two cases in its copy — "You paid ₹X in cash" when the payer
+  records their own, and "Recorded by [admin] on behalf of [payer]" when the admin does
+  it for them. Same row, different provenance, and the reader can tell which.
+
+- **Over-allocation stays out of `--debit`. Red means owed money, and only that.** When a
+  custom split allocates more than the expense total, the error is carried by the
+  **`.ledger-total` double rule reddening** (the existing `.ledger-total-bad` treatment,
+  already the on-screen home of the sum-to-zero canary) plus a `Notice` in its error
+  tone. The invalid amount cell gets a **border** treatment, the same shape as `Field`'s
+  error state — **never a reddened figure**.
+
+  The reason is the reserved-colour rule doing real work rather than being decorative: if
+  a red number can mean "this input is invalid", then a red number no longer reliably
+  means "this person is owed money", and the one place the colour must be unambiguous is
+  a column of money. Colour the container, never the digits.
 
 - **Security model = Row-Level Security in the database**, because the app talks straight
   to Supabase. RLS policies ARE the security. Never disable RLS; never expose a table
@@ -295,6 +329,25 @@ Park these; none block the current work. Rough order to address them:
   is still `--credit` green `#1f6b4a`, which against navy was a clear signal but against
   teal is a near neighbour. The mark reads a bit monochrome now. Changing it means either
   spending the reserved green or adding a fourth colour, so it is a brand call, not a bug.
+
+### Gap-spec migrations — DEFERRED, and paper-first before any SQL
+Two database changes are known to be needed and are deliberately not written yet. Both go
+through **RPC design on paper, reviewed, before a line of SQL exists** — the same order
+that caught the missing `group_members` uniqueness constraint before `my_group_positions()`
+was built on top of it. Designing first is what turns "the assumption was wrong" into a
+question instead of a bug.
+
+- **§1 — exact-shares RPC.** Custom (non-equal) splits need a write path that takes
+  explicit per-member shares. The rounding rule that makes equal splits exact does not
+  apply, so the RPC must assert the shares sum to the expense total itself. Same house
+  conventions as every other RPC: `search_path=public`, `authenticated` only, revoked
+  from PUBLIC, and INVOKER unless there is a stated reason otherwise.
+- **§2 — `settlements` gains `method` and `recorded_by`.** Additive columns to support
+  cash settlements alongside UPI. Note the existing constraint this runs into: after the
+  A1 fix, column-level grants freeze most settlement fields after insert, so both columns
+  must be written **at insert time** or explicitly added to the grant — the same trap
+  already recorded for `upi_ref` in section 3. The counterparty-or-admin rule and the
+  always-stored `recorded_by` are settled decisions; see section 2.
 
 ### UI work still open (Stage 4 and beyond)
 - **Finish the designed screens**, one route per commit: group detail (the archive /
