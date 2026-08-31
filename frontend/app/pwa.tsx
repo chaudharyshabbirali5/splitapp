@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 type InstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -9,9 +9,45 @@ type InstallPromptEvent = Event & {
 
 const DISMISSED_KEY = 'splitapp:install-hint-dismissed';
 
-export function Pwa() {
+/**
+ * Captures the browser's install prompt so more than one surface can offer it.
+ *
+ * Extracted so the Profile screen's Install card and this floating hint share
+ * ONE mechanism. beforeinstallprompt fires once and its event can only be
+ * prompt()-ed once, so two independent listeners would race for the same event
+ * and the loser would render a dead button.
+ */
+export function useInstallPrompt() {
   const [installEvent, setInstallEvent] = useState<InstallPromptEvent | null>(null);
-  const [hidden, setHidden] = useState(true);
+
+  useEffect(() => {
+    const onBeforeInstall = (e: Event) => {
+      // Suppress the default mini-infobar so the offer appears where we want it.
+      e.preventDefault();
+      setInstallEvent(e as InstallPromptEvent);
+    };
+    const onInstalled = () => setInstallEvent(null);
+
+    window.addEventListener('beforeinstallprompt', onBeforeInstall);
+    window.addEventListener('appinstalled', onInstalled);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onBeforeInstall);
+      window.removeEventListener('appinstalled', onInstalled);
+    };
+  }, []);
+
+  const install = useCallback(async () => {
+    if (!installEvent) return;
+    await installEvent.prompt();
+    await installEvent.userChoice;
+    setInstallEvent(null);
+  }, [installEvent]);
+
+  return { canInstall: installEvent !== null, install };
+}
+
+export function Pwa() {
+  const { canInstall, install } = useInstallPrompt();
 
   // ---- service worker registration ----
   useEffect(() => {
@@ -55,32 +91,24 @@ export function Pwa() {
   }, []);
 
   // ---- install hint ----
-  useEffect(() => {
-    const onBeforeInstall = (e: Event) => {
-      // Suppress the default mini-infobar so the hint appears where we want it.
-      e.preventDefault();
-      setInstallEvent(e as InstallPromptEvent);
-      try {
-        if (window.localStorage.getItem(DISMISSED_KEY) !== '1') setHidden(false);
-      } catch {
-        setHidden(false);
-      }
-    };
-    const onInstalled = () => {
-      setHidden(true);
-      setInstallEvent(null);
-    };
-
-    window.addEventListener('beforeinstallprompt', onBeforeInstall);
-    window.addEventListener('appinstalled', onInstalled);
-    return () => {
-      window.removeEventListener('beforeinstallprompt', onBeforeInstall);
-      window.removeEventListener('appinstalled', onInstalled);
-    };
-  }, []);
+  // Only the dismissal is this component's business now; the prompt itself is
+  // owned by useInstallPrompt() above and shared with the Profile screen.
+  //
+  // Read lazily rather than in an effect: it is a one-time read of storage that
+  // never changes afterwards, so an effect would only add a render and trip
+  // react-hooks/set-state-in-effect. Starts true on the server so the hint
+  // cannot flash before the real value is known.
+  const [dismissed, setDismissed] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    try {
+      return window.localStorage.getItem(DISMISSED_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
 
   function dismiss() {
-    setHidden(true);
+    setDismissed(true);
     try {
       window.localStorage.setItem(DISMISSED_KEY, '1');
     } catch {
@@ -88,15 +116,7 @@ export function Pwa() {
     }
   }
 
-  async function install() {
-    if (!installEvent) return;
-    setHidden(true);
-    await installEvent.prompt();
-    await installEvent.userChoice;
-    setInstallEvent(null);
-  }
-
-  if (hidden || !installEvent) return null;
+  if (dismissed || !canInstall) return null;
 
   return (
     // Sits above the floating tab bar (64px tall, 20px gutter), not under it.
@@ -109,7 +129,7 @@ export function Pwa() {
       </p>
       <button
         type="button"
-        onClick={install}
+        onClick={() => void install()}
         className="btn btn-primary btn-sm shrink-0"
       >
         Install

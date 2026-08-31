@@ -40,7 +40,12 @@ export async function saveProfile(
     .update({ display_name: displayName, upi_id: upiRaw || null })
     .eq('id', user.id);
 
-  if (error) return { status: 'idle', error: error.message };
+  if (error) {
+    // Supabase's own text never reaches the screen; an RLS refusal must read as
+    // "you can't do this", not as a policy name.
+    console.error('saveProfile failed:', error.message);
+    return { status: 'idle', error: 'We could not save your profile. Try again.' };
+  }
 
   revalidatePath('/profile');
   revalidatePath('/groups');

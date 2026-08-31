@@ -36,7 +36,12 @@ export async function archiveGroup(
   }
 
   const { error } = await supabase.rpc('archive_group', { p_group_id: groupId });
-  if (error) return { error: error.message };
+  if (error) {
+    // Creator-only is enforced by archive_group() and groups_update. A refusal
+    // reads as a plain sentence, never as the underlying policy error.
+    console.error('archiveGroup failed:', error.message);
+    return { error: 'We could not archive that group. Only its creator can.' };
+  }
 
   revalidatePath('/groups');
   redirect('/groups');
