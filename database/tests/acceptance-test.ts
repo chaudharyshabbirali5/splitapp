@@ -63,6 +63,15 @@ const EXPENSE_1 = '5171a11a-0000-4000-8000-0000000000e1';
 const EXPENSE_2 = '5171a11a-0000-4000-8000-0000000000e2';
 const SETTLEMENT_1 = '5171a11a-0000-4000-8000-0000000000f1';
 
+// A SECOND group, so my_group_positions() is exercised across more than one.
+// With a single group a cross-group join bug is invisible: the CTEs aggregate
+// over every group the caller can see, so joining on member_id alone (instead
+// of group_id AND member_id) would still look correct. Asha is in both.
+const GROUP_2 = '5171a11a-0000-4000-8000-000000000002';
+const M2_ASHA = '5171a11a-0000-4000-8000-0000000000a2';
+const M2_BHAVI = '5171a11a-0000-4000-8000-0000000000b2';
+const EXPENSE_3 = '5171a11a-0000-4000-8000-0000000000e3';
+
 const ASHA_EMAIL = 'splitapp-acceptance-asha@example.com';
 const BHAVI_EMAIL = 'splitapp-acceptance-bhavi@example.com';
 const OUTSIDER_EMAIL = 'splitapp-acceptance-outsider@example.com';
@@ -119,6 +128,8 @@ async function main(): Promise<void> {
     await assertSplitInvariant();
     await reportGrants();
     await assertBalances();
+    await assertMyGroupPositions();
+    await assertMemberUniqueness();
     await assertRlsEnabled();
     await assertRlsBehaviour(ashaUserId, outsiderUserId);
   } finally {
@@ -226,9 +237,33 @@ async function seed(ashaUserId: string, bhaviUserId: string): Promise<void> {
     [SETTLEMENT_1, GROUP_ID, MEMBER_BHAVI, MEMBER_ASHA],
   );
 
+  // ---- second group: Asha + Bhavi, one expense, no placeholder ----
+  // Bhavi paid 5000, split 2 ways -> Asha owes 2500, Bhavi is owed 2500.
+  await db.query(
+    `insert into groups (id, name, group_type, created_by) values ($1,'Lonavala Trip','trip',$2)`,
+    [GROUP_2, ashaUserId],
+  );
+  await db.query(
+    `insert into group_members (id, group_id, user_id, display_name, upi_id, role) values
+       ($1,$3,$4,'Asha','asha@okaxis','admin'),
+       ($2,$3,$5,'Bhavi','bhavi@okhdfc','member')`,
+    [M2_ASHA, M2_BHAVI, GROUP_2, ashaUserId, bhaviUserId],
+  );
+  await db.query(
+    `insert into expenses (id, group_id, paid_by, amount_minor, description, created_by)
+     values ($1,$2,$3,5000,'Chai and vada pav',$4)`,
+    [EXPENSE_3, GROUP_2, M2_BHAVI, bhaviUserId],
+  );
+  await db.query(
+    `insert into expense_splits (expense_id, member_id, share_minor, share_type) values
+       ($1,$2,2500,'equal'), ($1,$3,2500,'equal')`,
+    [EXPENSE_3, M2_ASHA, M2_BHAVI],
+  );
+
   await db.query('commit');
 
   console.log('  group "Goa Trip" (trip), 3 members, 2 expenses, 6 splits, 1 confirmed settlement');
+  console.log('  group "Lonavala Trip" (trip), 2 members, 1 expense, 2 splits');
   check('seed committed', true);
 }
 
@@ -343,6 +378,136 @@ async function signInAs(email: string) {
 
 // ---------------------------------------------------------------- 5. RLS enabled
 
+/**
+ * my_group_positions() must agree with group_balances(), to the paise, for
+ * every group the caller is in.
+ *
+ * The two share no code — they cannot, since one returns every member's net for
+ * one group and the other one member's net across many. The arithmetic is
+ * therefore REPLICATED, and this is what stops the copies drifting: change one
+ * without the other and these assertions fail.
+ */
+async function assertMyGroupPositions(): Promise<void> {
+  section('6. my_group_positions() — parity with group_balances()');
+
+  await db.query(`notify pgrst, 'reload schema'`);
+  await new Promise((r) => setTimeout(r, 1500));
+
+  const asha = await signInAs(ASHA_EMAIL);
+  const { data, error } = await asha.rpc('my_group_positions');
+  if (error) throw new Error(`rpc my_group_positions failed: ${error.message}`);
+
+  type Pos = { group_id: string; my_member_id: string; net_minor: string };
+  const rows = (data ?? []) as Pos[];
+  for (const r of rows) {
+    console.log(`  group ${r.group_id.slice(0, 8)}  member ${r.my_member_id.slice(0, 8)}  net_minor = ${r.net_minor}`);
+  }
+
+  // Asha is in both seeded groups, and in nothing else.
+  check('returns one row per group the caller is in', rows.length === 2, `got ${rows.length}`);
+  const ids = new Set(rows.map((r) => r.group_id));
+  check('includes the placeholder group (Goa Trip)', ids.has(GROUP_ID));
+  check('includes the second group (Lonavala Trip)', ids.has(GROUP_2));
+  check('one row per group — no duplicates', ids.size === rows.length,
+    `${ids.size} distinct vs ${rows.length} rows`);
+
+  // ---- the drift assertion, per group ----
+  for (const r of rows) {
+    const gb = await db.query<{ net_minor: string }>(
+      `select net_minor from group_balances($1) where member_id = $2`,
+      [r.group_id, r.my_member_id],
+    );
+    check(`group_balances(${r.group_id.slice(0, 8)}) has the caller's row`, gb.rows.length === 1,
+      `got ${gb.rows.length}`);
+    if (gb.rows.length === 1) {
+      eq(
+        `DRIFT ${r.group_id.slice(0, 8)} — my_group_positions === group_balances`,
+        BigInt(r.net_minor),
+        BigInt(gb.rows[0].net_minor),
+      );
+    }
+  }
+
+  // Placeholder parity: Goa Trip contains Chin (user_id NULL), whose activity
+  // must still flow into Asha's net. 10000 is the value group_balances() gives
+  // Asha there, and it is only correct if Chin's splits were counted.
+  const goa = rows.find((r) => r.group_id === GROUP_ID);
+  eq('PLACEHOLDER parity — Goa Trip net counts Chin', BigInt(goa?.net_minor ?? '-1'), 10000n);
+
+  // Second group has no placeholder: Bhavi paid 5000, split 2 ways, so Asha owes 2500.
+  const lon = rows.find((r) => r.group_id === GROUP_2);
+  eq('second group net is correct', BigInt(lon?.net_minor ?? '-1'), -2500n);
+
+  // The grand total the home screen will compute client-side.
+  const total = rows.reduce((a, r) => a + BigInt(r.net_minor), 0n);
+  eq('grand total across groups', total, 7500n);
+
+  // A non-member must get nothing at all — not a zero, not a row.
+  const outsider = await signInAs(OUTSIDER_EMAIL);
+  const { data: oData, error: oErr } = await outsider.rpc('my_group_positions');
+  check('non-member gets 0 rows (INVOKER + anchor)', !oErr && (oData ?? []).length === 0,
+    `err=${oErr?.message ?? 'none'} rows=${(oData ?? []).length}`);
+}
+
+/**
+ * The partial unique index that makes the "one row per group" guarantee real.
+ * Without it my_group_positions() could emit a group twice and the client-side
+ * grand total would silently double-count it.
+ */
+async function assertMemberUniqueness(): Promise<void> {
+  section('7. uq_members_group_user — duplicate membership is rejected');
+
+  const idx = await db.query(
+    `select indexdef from pg_indexes
+     where schemaname='public' and tablename='group_members' and indexname='uq_members_group_user'`,
+  );
+  check('partial unique index exists', idx.rows.length === 1);
+  check('index is PARTIAL on user_id is not null',
+    (idx.rows[0]?.indexdef ?? '').toLowerCase().includes('where (user_id is not null)'),
+    idx.rows[0]?.indexdef ?? '');
+
+  // A second member row for a user already in the group must be refused.
+  const ashaUserId = (await db.query<{ user_id: string }>(
+    `select user_id from group_members where id = $1`, [MEMBER_ASHA],
+  )).rows[0].user_id;
+
+  let blocked = false;
+  let detail = '';
+  try {
+    await db.query('begin');
+    await db.query(
+      `insert into group_members (group_id, user_id, display_name, role)
+       values ($1,$2,'Asha duplicate','member')`,
+      [GROUP_ID, ashaUserId],
+    );
+    await db.query('rollback');
+  } catch (e) {
+    blocked = true;
+    detail = (e as Error).message.split(String.fromCharCode(10))[0];
+    await db.query('rollback');
+  }
+  check('duplicate (group_id, user_id) is REJECTED', blocked, detail);
+
+  // Placeholders are outside the index: many per group must stay legal.
+  let placeholdersOk = false;
+  detail = ''; // do not inherit the message from the rejection above
+  try {
+    await db.query('begin');
+    await db.query(
+      `insert into group_members (group_id, user_id, display_name, role) values
+         ($1,null,'Extra placeholder A','member'),
+         ($1,null,'Extra placeholder B','member')`,
+      [GROUP_ID],
+    );
+    placeholdersOk = true;
+    await db.query('rollback');
+  } catch (e) {
+    detail = (e as Error).message.split(String.fromCharCode(10))[0];
+    await db.query('rollback');
+  }
+  check('multiple placeholders per group still ALLOWED', placeholdersOk, detail);
+}
+
 async function assertRlsEnabled(): Promise<void> {
   section('6. RLS ENABLED on all six tables');
 
@@ -373,10 +538,10 @@ async function assertRlsBehaviour(ashaUserId: string, outsiderUserId: string): P
 
   const member = await countsAs(ashaUserId);
   console.log(`  as Asha (member)   : ${JSON.stringify(member)}`);
-  check('member sees the group', member.groups === 1);
-  check('member sees 3 members', member.group_members === 3);
-  check('member sees 2 expenses', member.expenses === 2);
-  check('member sees 6 splits', member.expense_splits === 6);
+  check('member sees both seeded groups', member.groups === 2, `got ${member.groups}`);
+  check('member sees 5 members across them', member.group_members === 5, `got ${member.group_members}`);
+  check('member sees 3 expenses', member.expenses === 3, `got ${member.expenses}`);
+  check('member sees 8 splits', member.expense_splits === 8, `got ${member.expense_splits}`);
   check('member sees 1 settlement', member.settlements === 1);
   check('member gets 3 balance rows', member.balances === 3);
 
@@ -418,13 +583,20 @@ async function countsAs(userId: string) {
     ]);
     await db.query('set local role authenticated');
 
-    const one = async (sql: string) => Number((await db.query<{ c: string }>(sql)).rows[0].c);
+    // Scoped to the seeded groups. Counting globally coupled this to the exact
+    // seed shape, so adding a second group broke assertions that were really
+    // asking "can a member see THIS group's rows?". The global case is still
+    // covered by the API checks below.
+    const G = [GROUP_ID, GROUP_2];
+    const one = async (sql: string, params: unknown[] = [G]) =>
+      Number((await db.query<{ c: string }>(sql, params)).rows[0].c);
     const result = {
-      groups: await one(`select count(*) c from groups`),
-      group_members: await one(`select count(*) c from group_members`),
-      expenses: await one(`select count(*) c from expenses`),
-      expense_splits: await one(`select count(*) c from expense_splits`),
-      settlements: await one(`select count(*) c from settlements`),
+      groups: await one(`select count(*) c from groups where id = any($1)`),
+      group_members: await one(`select count(*) c from group_members where group_id = any($1)`),
+      expenses: await one(`select count(*) c from expenses where group_id = any($1)`),
+      expense_splits: await one(
+        `select count(*) c from expense_splits s join expenses e on e.id = s.expense_id where e.group_id = any($1)`),
+      settlements: await one(`select count(*) c from settlements where group_id = any($1)`),
       balances: Number(
         (await db.query<{ c: string }>(`select count(*) c from group_balances($1)`, [GROUP_ID])).rows[0].c,
       ),
@@ -461,11 +633,13 @@ async function cleanup(): Promise<void> {
   // Ordered by FK dependency — expense_splits.member_id and settlements.*_member
   // reference group_members without ON DELETE CASCADE.
   await db.query('begin');
-  await db.query(`delete from expense_splits where expense_id in (select id from expenses where group_id = $1)`, [GROUP_ID]);
-  await db.query(`delete from settlements where group_id = $1`, [GROUP_ID]);
-  await db.query(`delete from expenses where group_id = $1`, [GROUP_ID]);
-  await db.query(`delete from group_members where group_id = $1`, [GROUP_ID]);
-  await db.query(`delete from groups where id = $1`, [GROUP_ID]);
+  for (const g of [GROUP_ID, GROUP_2]) {
+    await db.query(`delete from expense_splits where expense_id in (select id from expenses where group_id = $1)`, [g]);
+    await db.query(`delete from settlements where group_id = $1`, [g]);
+    await db.query(`delete from expenses where group_id = $1`, [g]);
+    await db.query(`delete from group_members where group_id = $1`, [g]);
+    await db.query(`delete from groups where id = $1`, [g]);
+  }
   await db.query('commit');
 
   // profiles rows cascade from auth.users

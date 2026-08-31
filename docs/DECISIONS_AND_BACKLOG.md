@@ -3,7 +3,7 @@
 or "what was I supposed to fix before launch?" Keep it updated as things change.
 
 _Snapshot as of: after Step 8 (PWA), the A1 security fix, group archive, the design pass, the teal/coral retheme and the monorepo restructure. Update the date whenever you edit._
-_Last updated: 2026-08-30 (after the design-system adoption, theme control, tab bar, and the login + groups restructures)_
+_Last updated: 2026-08-31 (after my_group_positions() and the group_members uniqueness constraint)_
 
 > New to this project, or a fresh AI session? Read **HANDOFF.md** first — it tells the
 > whole story from step 1 and explains how we work. This file is the "why" and the
@@ -106,6 +106,37 @@ for what to build and how; this file tracks decisions and what's left.
   a ready-made phishing lure even though React escapes it. Log the detail with
   `console.error`; show a human sentence.
 
+- **`uq_members_group_user` is load-bearing, not hygiene.** A partial unique index on
+  `group_members (group_id, user_id) where user_id is not null`, added alongside
+  `my_group_positions()`. That function anchors on "the caller's member row in this
+  group" and collapses to one row per group; if a user could hold two member rows in one
+  group it would emit that group twice and the home screen's client-side grand total
+  would **double-count it** — a silently wrong money figure, no error, on the first
+  screen anyone opens. The index turns one-row-per-group from a convention into a
+  guarantee. It is **partial on purpose**: placeholders (`user_id is null`) sit outside
+  it, so a group may still hold as many not-yet-joined members as it likes.
+
+  Before adding it, all three insert paths were audited: `create_group_with_owner`
+  inserts into a group created one statement earlier (nothing can pre-exist);
+  `join_group_via_code` already pre-checks membership and returns early (the index now
+  *enforces* that guard); `addPlaceholderMember` writes `user_id = null` explicitly and
+  is outside the index. None can turn a rejection into a user-facing crash.
+
+- **The uniqueness rule does NOT auto-merge placeholders, and that stays true.** When
+  someone joins a group that already contains a placeholder standing for them, they get
+  a **new member row**; the placeholder is untouched. That was a deliberate call in step
+  4 and the index does not change it — it only forbids the same *account* appearing
+  twice. Merging a placeholder into a real account moves money between ledger rows, so
+  it has to be an explicit, auditable action, never a side effect of a constraint.
+
+- **`my_group_positions()` replicates `group_balances()`'s arithmetic — it cannot share
+  it.** One returns every member's net for one group; the other one member's net across
+  many. Expressing the second in terms of the first reintroduces the N+1 it exists to
+  remove. So the four components are copied verbatim (same signs, same
+  `is_deleted = false` / `status = 'confirmed'` filters, same `::bigint`), and **the
+  acceptance suite asserts the two agree to the paise for every seeded group** — drift
+  fails a test instead of shipping. If you change one, change the other.
+
 - **Security model = Row-Level Security in the database**, because the app talks straight
   to Supabase. RLS policies ARE the security. Never disable RLS; never expose a table
   without a policy. Membership-check helper functions are SECURITY DEFINER (to avoid
@@ -207,8 +238,9 @@ for what to build and how; this file tracks decisions and what's left.
   have meant new reads, which was out of scope for a markup pass. The screen is correct
   and complete for the data it has; it is not the finished design.
 
-  **The decision for when that work happens: add an all-groups RPC, do NOT loop
-  `group_balances`.** `group_balances(gid uuid)` takes a single group id and there is no
+  **RESOLVED — `my_group_positions()` now exists** (migration
+  `20260831114631_my_group_positions.sql`). The screen still has to be wired to it; that
+  is a separate turn. The reasoning that led here: `group_balances(gid uuid)` takes a single group id and there is no
   all-groups variant, so the obvious implementation is N+1 RPC calls on the home
   screen — 23 round-trips at 20 groups, on the screen people open first. Preferred
   approach is one small additive migration returning every group's net for the caller in
