@@ -1,5 +1,6 @@
 'use client';
 
+import { Share2 } from 'lucide-react';
 import { useState } from 'react';
 
 /**
@@ -24,12 +25,9 @@ export function ShareLink({ joinCode }: { joinCode: string }) {
   }
 
   return (
-    <div className="space-y-2">
-      <button
-        type="button"
-        onClick={copy}
-        className="btn btn-quiet btn-block"
-      >
+    <div className="flex flex-col gap-2">
+      <button type="button" onClick={copy} className="btn btn-quiet btn-block">
+        <Share2 size={16} strokeWidth={1.5} aria-hidden="true" />
         {copied ? 'Link copied' : 'Share invite link'}
       </button>
 
