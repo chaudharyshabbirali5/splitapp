@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useActionState, useState } from 'react';
+import { useActionState, useRef, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 
 import type { ExpenseFormState } from './actions';
@@ -12,12 +12,12 @@ export type MemberOption = {
   isPlaceholder: boolean;
 };
 
-function SubmitButton({ label }: { label: string }) {
+function SubmitButton({ label, disabled = false }: { label: string; disabled?: boolean }) {
   const { pending } = useFormStatus();
   return (
     <button
       type="submit"
-      disabled={pending}
+      disabled={pending || disabled}
       className="btn btn-primary btn-block"
     >
       {pending ? 'Saving…' : label}
@@ -51,17 +51,50 @@ export function ExpenseForm({
     () => new Set(initial?.participantIds ?? members.map((m) => m.id)),
   );
 
+  // Dirty tracking, and ONLY when editing. `initial` is absent on add-expense,
+  // where there is nothing to compare against and Save must always be live —
+  // so nothing about the add screen changes. The fields stay uncontrolled; a
+  // form-level onInput re-reads them rather than converting every input to
+  // controlled state, which would be a real change to how this form works.
+  const formRef = useRef<HTMLFormElement>(null);
+  const [dirty, setDirty] = useState(false);
+
+  function sameAsInitial(form: HTMLFormElement, nextChecked: Set<string>): boolean {
+    if (!initial) return false;
+    const fd = new FormData(form);
+    const participants = new Set(nextChecked);
+    const initialParticipants = new Set(initial.participantIds);
+    return (
+      String(fd.get('amount') ?? '').trim() === initial.amount.trim() &&
+      String(fd.get('description') ?? '').trim() === initial.description.trim() &&
+      String(fd.get('paid_by') ?? '') === initial.paidBy &&
+      participants.size === initialParticipants.size &&
+      [...participants].every((id) => initialParticipants.has(id))
+    );
+  }
+
+  function recomputeDirty(nextChecked: Set<string>) {
+    if (!initial || !formRef.current) return;
+    setDirty(!sameAsInitial(formRef.current, nextChecked));
+  }
+
   function toggle(id: string) {
     setChecked((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
+      recomputeDirty(next);
       return next;
     });
   }
 
   return (
-    <form action={formAction} className="space-y-6">
+    <form
+      ref={formRef}
+      action={formAction}
+      onInput={() => recomputeDirty(checked)}
+      className="space-y-6"
+    >
       <div className="space-y-1.5">
         <label htmlFor="amount" className="field-label">
           Amount
@@ -159,7 +192,7 @@ export function ExpenseForm({
 
       {state.error && <p className="text-sm text-debit">{state.error}</p>}
 
-      <SubmitButton label={submitLabel} />
+      <SubmitButton label={submitLabel} disabled={!!initial && !dirty} />
 
       <Link href={`/groups/${groupId}`} className="link block text-center text-sm">
         Cancel

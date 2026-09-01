@@ -85,7 +85,12 @@ export async function updateExpense(
     p_participants: participants,
   });
 
-  if (error) return { error: error.message };
+  if (error) {
+    // The RPC's own text never reaches the screen — an RLS refusal must read as
+    // "you can't do this", not as a policy name.
+    console.error('updateExpense failed:', error.message);
+    return { error: 'We could not save those changes. Try again.' };
+  }
 
   revalidatePath(`/groups/${groupId}`);
   redirect(`/groups/${groupId}`);
