@@ -254,8 +254,12 @@ export default async function GroupsPage() {
                       <Link href={`/groups/${g.id}`} className="ledger-row ledger-link">
                         <span className="flex min-w-0 flex-col gap-1">
                           <span className="truncate font-medium">{g.name}</span>
+                          {/* p-0.5 with a matching -m-0.5 reserves the 2px overlap ring:
+                              box-shadow paints OUTSIDE the border box, so it never sized and
+                              the last disc's ring fell beyond the stack. w-fit stops the
+                              min-w-0 column squeezing it into card-flush's overflow clip. */}
                           {members.length > 0 && (
-                            <span className="avatar-stack flex items-center">
+                            <span className="avatar-stack -m-0.5 flex w-fit items-center p-0.5">
                               {members.slice(0, 5).map((m, i) => (
                                 <span
                                   key={`${g.id}-${i}`}

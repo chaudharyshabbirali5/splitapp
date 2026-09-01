@@ -141,7 +141,10 @@ export default async function GroupPage({ params }: { params: Promise<{ id: stri
           </p>
         </div>
 
-        <span className="avatar-stack flex shrink-0 items-center">
+        {/* p-0.5 with a matching -m-0.5 reserves the 2px overlap ring:
+            box-shadow paints OUTSIDE the border box, so it never sized,
+            and the last disc's ring fell outside the stack. */}
+        <span className="avatar-stack -m-0.5 flex shrink-0 items-center p-0.5">
           {allMembers.slice(0, 5).map((m) => (
             <span
               key={m.id}
