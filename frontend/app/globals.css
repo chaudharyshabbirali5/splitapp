@@ -432,6 +432,20 @@
     box-shadow: var(--shadow-soft);
   }
 
+  /* Inline rupee input for a custom-split row. Dashed underline while empty,
+     solid once typed in, brand on focus, debit when the row does not add up —
+     the invalid state colours the CONTAINER's rule, never the digits, so a red
+     figure keeps meaning "owed money" and nothing else. */
+  .amount-cell{display:inline-flex;align-items:baseline;justify-content:flex-end;gap:4px;width:108px;flex:0 0 auto;padding:2px 0 3px;border-bottom:1px dashed var(--rule-strong)}
+  .amount-cell:has(input:not(:placeholder-shown)){border-bottom-style:solid}
+  .amount-cell:focus-within{border-bottom-color:var(--brand);border-bottom-style:solid}
+  .amount-cell[data-invalid]{border-bottom-color:var(--debit)}
+  .amount-cell > span{font-family:var(--font-mono);font-size:0.75rem;color:var(--ink-faint)}
+  .amount-cell > input{width:100%;min-width:0;border:0;background:none;outline:none;padding:0;text-align:right;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:0.875rem;letter-spacing:-0.01em;color:var(--ink)}
+  .amount-cell > input::placeholder{color:var(--ink-faint)}
+  .amount-cell[data-invalid] > input{color:var(--debit)}
+  .amount-cell[data-quiet] > input{color:var(--ink-faint)}
+
   /* ── Small pieces ────────────────────────────────────────────────────── */
 
   .chip {
