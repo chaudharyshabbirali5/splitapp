@@ -130,6 +130,7 @@ async function main(): Promise<void> {
     await assertBalances();
     await assertMyGroupPositions();
     await assertMemberUniqueness();
+    await assertExactShares();
     await assertRlsEnabled();
     await assertRlsBehaviour(ashaUserId, outsiderUserId);
   } finally {
@@ -454,6 +455,181 @@ async function assertMyGroupPositions(): Promise<void> {
  * Without it my_group_positions() could emit a group twice and the client-side
  * grand total would silently double-count it.
  */
+/**
+ * Exact per-person shares (migration 20260901120000).
+ *
+ * Every call goes through PostgREST with a real member JWT, because that is the
+ * path the app uses and the one where overload resolution actually matters.
+ */
+async function assertExactShares(): Promise<void> {
+  section('8. create_expense / update_expense - exact shares');
+
+  await db.query(`notify pgrst, 'reload schema'`);
+  await new Promise((r) => setTimeout(r, 1500));
+
+  const asha = await signInAs(ASHA_EMAIL);
+  const created: string[] = [];
+
+  const sharesFor = async (expenseId: string) => {
+    const r = await db.query<{ member_id: string; share_minor: string; share_type: string }>(
+      `select member_id, share_minor, share_type from expense_splits where expense_id = $1`,
+      [expenseId],
+    );
+    return r.rows;
+  };
+
+  // ---- 1. exact split stores the shares it was given ----------------------
+  // 10000 as 5000/3000/2000 - deliberately NOT what an equal split produces
+  // (3334/3333/3333), so a silent fallback to the equal path would fail here.
+  const exact = await asha.rpc('create_expense', {
+    p_group_id: GROUP_ID,
+    p_paid_by: MEMBER_ASHA,
+    p_amount_minor: 10000,
+    p_description: 'Exact split',
+    p_participants: [MEMBER_ASHA, MEMBER_BHAVI, MEMBER_CHIN],
+    p_shares: [5000, 3000, 2000],
+  });
+  check('exact split accepted', !exact.error, exact.error?.message ?? '');
+  if (exact.data) created.push(exact.data as string);
+
+  if (exact.data) {
+    const rows = await sharesFor(exact.data as string);
+    const by = new Map(rows.map((r) => [r.member_id, BigInt(r.share_minor)]));
+    eq('exact: Asha  share', by.get(MEMBER_ASHA) ?? -1n, 5000n);
+    eq('exact: Bhavi share', by.get(MEMBER_BHAVI) ?? -1n, 3000n);
+    eq('exact: Chin  share', by.get(MEMBER_CHIN) ?? -1n, 2000n);
+    check('share_type is exact on EVERY row', rows.every((r) => r.share_type === 'exact'),
+      rows.map((r) => r.share_type).join(','));
+  }
+
+  // ---- 2. a zero share stores and reads back ------------------------------
+  const withZero = await asha.rpc('create_expense', {
+    p_group_id: GROUP_ID,
+    p_paid_by: MEMBER_ASHA,
+    p_amount_minor: 9000,
+    p_description: 'Zero share',
+    p_participants: [MEMBER_ASHA, MEMBER_BHAVI, MEMBER_CHIN],
+    p_shares: [9000, 0, 0],
+  });
+  check('zero-share split accepted', !withZero.error, withZero.error?.message ?? '');
+  if (withZero.data) {
+    created.push(withZero.data as string);
+    const rows = await sharesFor(withZero.data as string);
+    const by = new Map(rows.map((r) => [r.member_id, BigInt(r.share_minor)]));
+    check('zero-share rows are KEPT, not dropped', rows.length === 3, `got ${rows.length}`);
+    eq('zero share stored as 0', by.get(MEMBER_BHAVI) ?? -1n, 0n);
+  }
+
+  // ---- 3. the sum assertion still fires, and ROLLS BACK -------------------
+  const before = Number(
+    (await db.query<{ c: string }>(`select count(*) c from expenses where group_id = $1`, [GROUP_ID])).rows[0].c,
+  );
+  const bad = await asha.rpc('create_expense', {
+    p_group_id: GROUP_ID,
+    p_paid_by: MEMBER_ASHA,
+    p_amount_minor: 10000,
+    p_description: 'Does not add up',
+    p_participants: [MEMBER_ASHA, MEMBER_BHAVI],
+    p_shares: [5000, 4999],
+  });
+  check('non-adding-up exact split is REJECTED', !!bad.error,
+    bad.error?.message?.slice(0, 60) ?? 'no error raised');
+  const after = Number(
+    (await db.query<{ c: string }>(`select count(*) c from expenses where group_id = $1`, [GROUP_ID])).rows[0].c,
+  );
+  check('rejected split left NO expense behind (rollback)', after === before,
+    `before=${before} after=${after}`);
+
+  // ---- 4. the two new failure modes ---------------------------------------
+  const mismatch = await asha.rpc('create_expense', {
+    p_group_id: GROUP_ID,
+    p_paid_by: MEMBER_ASHA,
+    p_amount_minor: 10000,
+    p_description: 'Length mismatch',
+    p_participants: [MEMBER_ASHA, MEMBER_BHAVI, MEMBER_CHIN],
+    p_shares: [5000, 5000],
+  });
+  check('length mismatch is REJECTED', !!mismatch.error,
+    mismatch.error?.message?.slice(0, 60) ?? 'no error raised');
+
+  const negative = await asha.rpc('create_expense', {
+    p_group_id: GROUP_ID,
+    p_paid_by: MEMBER_ASHA,
+    p_amount_minor: 10000,
+    p_description: 'Negative share',
+    p_participants: [MEMBER_ASHA, MEMBER_BHAVI],
+    p_shares: [15000, -5000],
+  });
+  check('negative share is REJECTED', !!negative.error,
+    negative.error?.message?.slice(0, 60) ?? 'no error raised');
+
+  // ---- 5. EQUAL-PATH REGRESSION -------------------------------------------
+  // Five keys, no p_shares - the shape every existing caller sends. This also
+  // proves a five-key body still resolves after the old signature was dropped,
+  // rather than failing with "could not choose the best candidate function".
+  const equal = await asha.rpc('create_expense', {
+    p_group_id: GROUP_ID,
+    p_paid_by: MEMBER_ASHA,
+    p_amount_minor: 10000,
+    p_description: 'Equal regression',
+    p_participants: [MEMBER_ASHA, MEMBER_BHAVI, MEMBER_CHIN],
+  });
+  check('five-key call RESOLVES after the drop (no overload ambiguity)', !equal.error,
+    equal.error?.message ?? '');
+  if (equal.data) {
+    created.push(equal.data as string);
+    const rows = await sharesFor(equal.data as string);
+    const shares = rows.map((r) => BigInt(r.share_minor)).sort((a, b) => (a < b ? 1 : a > b ? -1 : 0));
+    // 10000 / 3 = 3333 base, remainder 1 to the FIRST participant.
+    check('equal path still 3334/3333/3333',
+      shares.length === 3 && shares[0] === 3334n && shares[1] === 3333n && shares[2] === 3333n,
+      shares.join('/'));
+    check('equal path still stores share_type equal',
+      rows.every((r) => r.share_type === 'equal'),
+      rows.map((r) => r.share_type).join(','));
+  }
+
+  // ---- 6. grant correctness on the NEW signature --------------------------
+  const anon = createClient(SUPABASE_URL, ANON_KEY, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  const anonCall = await anon.rpc('create_expense', {
+    p_group_id: GROUP_ID,
+    p_paid_by: MEMBER_ASHA,
+    p_amount_minor: 100,
+    p_description: 'anon',
+    p_participants: [MEMBER_ASHA],
+    p_shares: [100],
+  });
+  check('anon CANNOT execute the six-arg function', !!anonCall.error,
+    anonCall.error?.message?.slice(0, 60) ?? 'no error raised');
+
+  // ---- 7. update_expense exact path ---------------------------------------
+  if (exact.data) {
+    const upd = await asha.rpc('update_expense', {
+      p_expense_id: exact.data as string,
+      p_paid_by: MEMBER_ASHA,
+      p_amount_minor: 10000,
+      p_description: 'Exact split, edited',
+      p_participants: [MEMBER_ASHA, MEMBER_BHAVI],
+      p_shares: [7500, 2500],
+    });
+    check('update_expense accepts exact shares', !upd.error, upd.error?.message ?? '');
+    const rows = await sharesFor(exact.data as string);
+    const by = new Map(rows.map((r) => [r.member_id, BigInt(r.share_minor)]));
+    check('update replaced the split (2 rows)', rows.length === 2, `got ${rows.length}`);
+    eq('update: Asha  share', by.get(MEMBER_ASHA) ?? -1n, 7500n);
+    eq('update: Bhavi share', by.get(MEMBER_BHAVI) ?? -1n, 2500n);
+  }
+
+  // Leave the group exactly as the earlier sections expect it.
+  for (const id of created) {
+    await db.query(`delete from expense_splits where expense_id = $1`, [id]);
+    await db.query(`delete from expenses where id = $1`, [id]);
+  }
+  console.log(`  cleaned up ${created.length} test expenses`);
+}
+
 async function assertMemberUniqueness(): Promise<void> {
   section('7. uq_members_group_user — duplicate membership is rejected');
 
