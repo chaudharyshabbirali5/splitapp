@@ -14,7 +14,35 @@ function readForm(formData: FormData) {
   const paidBy = String(formData.get('paid_by') ?? '');
   // Checkbox group: one entry per ticked member.
   const participants = formData.getAll('participants').map(String).filter(Boolean);
-  return { amountRaw, description, paidBy, participants };
+  // Custom split only. Hidden inputs, already integer paise, emitted in the same
+  // order as the ticked participants because create_expense correlates the two
+  // arrays BY INDEX. Absent entirely on an equal split, which is what makes the
+  // RPC take its unchanged path.
+  const sharesRaw = formData.getAll('shares').map(String).filter((v) => v !== '');
+  return { amountRaw, description, paidBy, participants, sharesRaw };
+}
+
+/**
+ * Shares are only forwarded when there is exactly one per participant and each
+ * is a non-negative integer. Anything else is treated as "no custom split"
+ * rather than passed on half-formed — the RPC would reject it, but a malformed
+ * payload should never get that far.
+ *
+ * The sum is NOT checked here: create_expense asserts it server-side and that
+ * assertion is the guarantee. Duplicating it would create a second definition of
+ * "adds up" that could drift from the one that matters.
+ */
+function readShares(sharesRaw: string[], participantCount: number): number[] | null {
+  if (sharesRaw.length === 0) return null;
+  if (sharesRaw.length !== participantCount) return null;
+  const parsed: number[] = [];
+  for (const raw of sharesRaw) {
+    if (!/^\d+$/.test(raw)) return null;
+    const n = Number(raw);
+    if (!Number.isSafeInteger(n) || n < 0) return null;
+    parsed.push(n);
+  }
+  return parsed;
 }
 
 function validate(amountRaw: string, paidBy: string, participants: string[]) {
@@ -40,7 +68,7 @@ export async function createExpense(
   } = await supabase.auth.getUser();
   if (!user) redirect(`/login?next=${encodeURIComponent(`/groups/${groupId}`)}`);
 
-  const { amountRaw, description, paidBy, participants } = readForm(formData);
+  const { amountRaw, description, paidBy, participants, sharesRaw } = readForm(formData);
   const checked = validate(amountRaw, paidBy, participants);
   if ('error' in checked) return { error: checked.error };
 
@@ -53,6 +81,8 @@ export async function createExpense(
     p_amount_minor: checked.amountMinor,
     p_description: description,
     p_participants: participants,
+    // null on an equal split, so the RPC defaults it and divides as before.
+    p_shares: readShares(sharesRaw, participants.length),
   });
 
   if (error) return { error: error.message };
@@ -73,7 +103,7 @@ export async function updateExpense(
   } = await supabase.auth.getUser();
   if (!user) redirect(`/login?next=${encodeURIComponent(`/groups/${groupId}`)}`);
 
-  const { amountRaw, description, paidBy, participants } = readForm(formData);
+  const { amountRaw, description, paidBy, participants, sharesRaw } = readForm(formData);
   const checked = validate(amountRaw, paidBy, participants);
   if ('error' in checked) return { error: checked.error };
 
@@ -83,6 +113,8 @@ export async function updateExpense(
     p_amount_minor: checked.amountMinor,
     p_description: description,
     p_participants: participants,
+    // null on an equal split, so the RPC defaults it and divides as before.
+    p_shares: readShares(sharesRaw, participants.length),
   });
 
   if (error) {
