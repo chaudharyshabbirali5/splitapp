@@ -3,7 +3,7 @@
 or "what was I supposed to fix before launch?" Keep it updated as things change.
 
 _Snapshot as of: after Step 8 (PWA), the A1 security fix, group archive, the design pass, the teal/coral retheme and the monorepo restructure. Update the date whenever you edit._
-_Last updated: 2026-08-31 (plus two decisions taken ahead of the gap-spec migrations)_
+_Last updated: 2026-09-01 (after the exact-shares path, commit 1f50850)_
 
 > New to this project, or a fresh AI session? Read **HANDOFF.md** first — it tells the
 > whole story from step 1 and explains how we work. This file is the "why" and the
@@ -373,6 +373,15 @@ question instead of a bug.
 - **A4 — Helper functions carry default PUBLIC execute grant.** Tested: anonymous callers
   get nothing (null auth.uid() → false, or permission denied on tables). Not a hole;
   tighten as cleanliness eventually.
+- **`expense_splits.share_type` has no CHECK constraint.** The `'equal' | 'exact' |
+  'percentage'` vocabulary is enforced by nothing but a column comment in
+  `splitapp.sql`, so a typo in a future function would be stored silently rather than
+  rejected. Both literals written today are correct — `create_expense` /
+  `update_expense` write `'equal'` and `'exact'` and the acceptance suite asserts both
+  (see the exact-shares checks added in 1f50850) — so **nothing is wrong now**, and
+  those tests are what guard this until a constraint exists. Adding one touches a
+  frozen-schema table, so it is its own deliberate decision rather than something to
+  slip into an unrelated migration.
 
 ### Before PUBLIC launch (real obligations)
 - **A5 — Account deletion / "delete my data".** Currently blocked: profiles are referenced
