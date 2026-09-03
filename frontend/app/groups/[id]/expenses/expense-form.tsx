@@ -81,6 +81,17 @@ export function ExpenseForm({
     description: string;
     paidBy: string;
     participantIds: string[];
+    /**
+     * Stored per-participant shares, keyed by member id, as rupee strings ready
+     * for an AmountCell. Present only for an `exact` split.
+     *
+     * Without these the edit screen opened an exact split in Equally mode and a
+     * no-op re-save silently re-divided it, destroying the shares the user had
+     * typed. An equal split deliberately passes nothing: those shares are
+     * derived, not authored, and GAPS_SPEC section 5 says not to prefill them.
+     */
+    shares?: Record<string, string>;
+    splitMode?: 'equal' | 'exact';
   };
 }) {
   const [state, formAction] = useActionState<ExpenseFormState, FormData>(action, {});
@@ -103,23 +114,37 @@ export function ExpenseForm({
   // well as living on the uncontrolled input.
   const [amountText, setAmountText] = useState(initial?.amount ?? '');
 
-  function sameAsInitial(form: HTMLFormElement, nextChecked: Set<string>): boolean {
+  function sameAsInitial(
+    form: HTMLFormElement,
+    nextChecked: Set<string>,
+    currentCells: Record<string, string>,
+  ): boolean {
     if (!initial) return false;
     const fd = new FormData(form);
     const participants = new Set(nextChecked);
     const initialParticipants = new Set(initial.participantIds);
+    // Shares count as a change too: editing only an amount cell must wake Save.
+    // Compared in paise, not as text, so "100" and "100.00" are the same figure.
+    const initialShares = initial.shares ?? {};
+    const sharesUnchanged = [...participants].every((id) => {
+      const before = cellToPaise(initialShares[id] ?? '');
+      const now = cellToPaise(currentCells[id] ?? '');
+      return before !== null && now !== null && before === now;
+    });
+
     return (
       String(fd.get('amount') ?? '').trim() === initial.amount.trim() &&
       String(fd.get('description') ?? '').trim() === initial.description.trim() &&
       String(fd.get('paid_by') ?? '') === initial.paidBy &&
       participants.size === initialParticipants.size &&
-      [...participants].every((id) => initialParticipants.has(id))
+      [...participants].every((id) => initialParticipants.has(id)) &&
+      sharesUnchanged
     );
   }
 
-  function recomputeDirty(nextChecked: Set<string>) {
+  function recomputeDirty(nextChecked: Set<string>, nextCells?: Record<string, string>) {
     if (!initial || !formRef.current) return;
-    setDirty(!sameAsInitial(formRef.current, nextChecked));
+    setDirty(!sameAsInitial(formRef.current, nextChecked, nextCells ?? cells));
   }
 
   function toggle(id: string) {
@@ -136,12 +161,18 @@ export function ExpenseForm({
   // A branch alongside the equal path, never a replacement for it. When mode is
   // 'equal' nothing below runs and the form submits exactly the fields it always
   // has, so create_expense receives no p_shares and takes its unchanged path.
-  const [mode, setMode] = useState<'equal' | 'custom'>('equal');
+  // Opens in whatever the stored expense actually is. An exact split MUST open
+  // in Custom: opening it in Equally and saving would re-divide it.
+  const [mode, setMode] = useState<'equal' | 'custom'>(
+    initial?.splitMode === 'exact' ? 'custom' : 'equal',
+  );
 
   // Raw text per member id, so a half-typed "12." is preserved while editing and
   // only becomes paise on parse. Blank means "nothing typed yet", which is not
   // the same as a typed 0.00 — the initial state must read as empty.
-  const [cells, setCells] = useState<Record<string, string>>({});
+  const [cells, setCells] = useState<Record<string, string>>(() => ({
+    ...(initial?.shares ?? {}),
+  }));
 
   const totalMinor = useMemo(() => {
     const parsed = parseRupeesToPaise(amountText);
@@ -176,7 +207,7 @@ export function ExpenseForm({
   function setCell(id: string, raw: string) {
     setCells((prev) => {
       const next = { ...prev, [id]: raw };
-      recomputeDirty(checked);
+      recomputeDirty(checked, next);
       return next;
     });
   }
@@ -189,14 +220,14 @@ export function ExpenseForm({
       next[id] = paiseToRupeeInput(Number(shares[i]));
     });
     setCells(next);
-    recomputeDirty(checked);
+    recomputeDirty(checked, next);
   }
 
   function clearCells() {
     const next: Record<string, string> = { ...cells };
     for (const id of participantIds) next[id] = '';
     setCells(next);
-    recomputeDirty(checked);
+    recomputeDirty(checked, next);
   }
 
   /** Offer the shortfall to the first participant — the same "top of the list"

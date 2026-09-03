@@ -52,7 +52,12 @@ export default async function EditExpensePage({
       .select('id, user_id, display_name')
       .eq('group_id', id)
       .order('joined_at', { ascending: true }),
-    supabase.from('expense_splits').select('member_id').eq('expense_id', expenseId),
+    // share_minor and share_type are what let an exact split reopen as itself.
+    // Reading member_id alone is what made a no-op re-save re-divide it.
+    supabase
+      .from('expense_splits')
+      .select('member_id, share_minor, share_type')
+      .eq('expense_id', expenseId),
   ]);
 
   const options: MemberOption[] = (members ?? []).map((m) => ({
@@ -60,6 +65,25 @@ export default async function EditExpensePage({
     display_name: m.display_name,
     isPlaceholder: m.user_id === null,
   }));
+
+  // Every row of one expense carries the same share_type, so read it off the
+  // data rather than inferring a mode from the numbers.
+  const splitMode: 'equal' | 'exact' =
+    (splits ?? [])[0]?.share_type === 'exact' ? 'exact' : 'equal';
+
+  // Only an exact split prefills its cells. An equal split's shares are derived
+  // rather than authored, and GAPS_SPEC section 5 says not to prefill them.
+  // toPaise throws rather than silently rounding, so a share that cannot be read
+  // safely is left blank instead of becoming a wrong figure.
+  const initialShares: Record<string, string> | undefined =
+    splitMode === 'exact'
+      ? Object.fromEntries(
+          (splits ?? []).map((s) => [
+            s.member_id,
+            paiseToRupeeInput(Number(toPaise(s.share_minor))),
+          ]),
+        )
+      : undefined;
 
   const payer = (members ?? []).find((m) => m.id === expense.paid_by);
   const payerName = payer?.display_name ?? 'Unknown';
@@ -108,6 +132,8 @@ export default async function EditExpensePage({
           description: expense.description ?? '',
           paidBy: expense.paid_by,
           participantIds: (splits ?? []).map((s) => s.member_id),
+          shares: initialShares,
+          splitMode,
         }}
       />
 

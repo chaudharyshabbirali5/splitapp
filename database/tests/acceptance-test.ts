@@ -622,6 +622,61 @@ async function assertExactShares(): Promise<void> {
     eq('update: Bhavi share', by.get(MEMBER_BHAVI) ?? -1n, 2500n);
   }
 
+  // ---- 8. EXACT SPLIT ROUND-TRIPS UNCHANGED -------------------------------
+  // The corruption this guards against: the edit screen used to read only
+  // member_id from expense_splits, so an exact split reopened in Equally mode
+  // and a no-op re-save silently RE-DIVIDED it, destroying the shares the user
+  // had typed. This asserts the shape the edit screen now sends -- the same
+  // participants with the same p_shares -- leaves the stored figures identical.
+  const rt = await asha.rpc('create_expense', {
+    p_group_id: GROUP_ID,
+    p_paid_by: MEMBER_ASHA,
+    p_amount_minor: 10000,
+    p_description: 'Round-trip',
+    p_participants: [MEMBER_ASHA, MEMBER_BHAVI, MEMBER_CHIN],
+    p_shares: [7000, 2500, 500],
+  });
+  check('round-trip: exact split created', !rt.error, rt.error?.message ?? '');
+
+  if (rt.data) {
+    created.push(rt.data as string);
+    const rtId = rt.data as string;
+
+    const loaded = await sharesFor(rtId);
+    const loadedBy = new Map(loaded.map((r) => [r.member_id, BigInt(r.share_minor)]));
+
+    // Re-save with exactly what a load would have produced -- no edits at all.
+    const resave = await asha.rpc('update_expense', {
+      p_expense_id: rtId,
+      p_paid_by: MEMBER_ASHA,
+      p_amount_minor: 10000,
+      p_description: 'Round-trip',
+      p_participants: [MEMBER_ASHA, MEMBER_BHAVI, MEMBER_CHIN],
+      p_shares: [
+        Number(loadedBy.get(MEMBER_ASHA) ?? -1n),
+        Number(loadedBy.get(MEMBER_BHAVI) ?? -1n),
+        Number(loadedBy.get(MEMBER_CHIN) ?? -1n),
+      ],
+    });
+    check('round-trip: unchanged re-save accepted', !resave.error, resave.error?.message ?? '');
+
+    const after = await sharesFor(rtId);
+    const afterBy = new Map(after.map((r) => [r.member_id, BigInt(r.share_minor)]));
+
+    eq('ROUND-TRIP Asha  share unchanged', afterBy.get(MEMBER_ASHA) ?? -1n, 7000n);
+    eq('ROUND-TRIP Bhavi share unchanged', afterBy.get(MEMBER_BHAVI) ?? -1n, 2500n);
+    eq('ROUND-TRIP Chin  share unchanged', afterBy.get(MEMBER_CHIN) ?? -1n, 500n);
+    check('ROUND-TRIP share_type still exact', after.every((r) => r.share_type === 'exact'),
+      after.map((r) => r.share_type).join(','));
+
+    // The explicit negative: an equal re-division would have produced
+    // 3334/3333/3333. If any of those appear, the corruption is back.
+    const shares = after.map((r) => BigInt(r.share_minor)).sort((a, b) => (a < b ? 1 : a > b ? -1 : 0));
+    check('ROUND-TRIP was NOT re-divided to equal',
+      !(shares[0] === 3334n && shares[1] === 3333n && shares[2] === 3333n),
+      shares.join('/'));
+  }
+
   // Leave the group exactly as the earlier sections expect it.
   for (const id of created) {
     await db.query(`delete from expense_splits where expense_id = $1`, [id]);
