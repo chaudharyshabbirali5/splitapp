@@ -131,6 +131,7 @@ async function main(): Promise<void> {
     await assertMyGroupPositions();
     await assertMemberUniqueness();
     await assertExactShares();
+    await assertCashSettlements();
     await assertRlsEnabled();
     await assertRlsBehaviour(ashaUserId, outsiderUserId);
   } finally {
@@ -737,6 +738,189 @@ async function assertMemberUniqueness(): Promise<void> {
     await db.query('rollback');
   }
   check('multiple placeholders per group still ALLOWED', placeholdersOk, detail);
+}
+
+/**
+ * Cash settlements for placeholder members (migration 20260902090000).
+ *
+ * record_cash_settlement is SECURITY DEFINER, so RLS is NOT a backstop inside
+ * it: every guard in its body IS the security boundary. These checks exercise
+ * that boundary through PostgREST with real member JWTs, which is the path an
+ * attacker would use.
+ *
+ * Group layout: Asha (real, admin), Bhavi (real, member), Chin (placeholder).
+ */
+async function assertCashSettlements(): Promise<void> {
+  section('9. record_cash_settlement - placeholder cash, counterparty or admin');
+
+  await db.query(`notify pgrst, 'reload schema'`);
+  await new Promise((r) => setTimeout(r, 1500));
+
+  const asha = await signInAs(ASHA_EMAIL);   // admin + group creator
+  const bhavi = await signInAs(BHAVI_EMAIL); // plain member
+  const createdSettlements: string[] = [];
+
+  const rowOf = async (id: string) =>
+    (await db.query<{ method: string; status: string; recorded_by: string | null; amount_minor: string }>(
+      `select method, status, recorded_by, amount_minor from settlements where id = $1`,
+      [id],
+    )).rows[0];
+
+  const netOf = async (memberId: string) => {
+    const r = await db.query<{ net_minor: string }>(
+      `select net_minor from group_balances($1) where member_id = $2`,
+      [GROUP_ID, memberId],
+    );
+    return BigInt(r.rows[0]?.net_minor ?? '0');
+  };
+
+  // ---- 1. counterparty records ------------------------------------------
+  // Chin (placeholder) paid Asha in cash. Asha is the counterparty.
+  const byParty = await asha.rpc('record_cash_settlement', {
+    p_group_id: GROUP_ID,
+    p_from_member: MEMBER_CHIN,
+    p_to_member: MEMBER_ASHA,
+    p_amount_minor: 1000,
+  });
+  check('counterparty can record a cash settlement', !byParty.error, byParty.error?.message ?? '');
+  if (byParty.data) {
+    createdSettlements.push(byParty.data as string);
+    const row = await rowOf(byParty.data as string);
+    check('cash row: method=cash', row.method === 'cash', row.method);
+    check('cash row: status=confirmed immediately', row.status === 'confirmed', row.status);
+    check('cash row: recorded_by = the recorder', row.recorded_by === MEMBER_ASHA,
+      String(row.recorded_by));
+  }
+
+  // ---- 2. admin records on someone else's behalf --------------------------
+  // Asha is admin AND creator, and is party to neither side here.
+  const byAdmin = await asha.rpc('record_cash_settlement', {
+    p_group_id: GROUP_ID,
+    p_from_member: MEMBER_CHIN,
+    p_to_member: MEMBER_BHAVI,
+    p_amount_minor: 500,
+  });
+  check('admin can record on behalf of two others', !byAdmin.error, byAdmin.error?.message ?? '');
+  if (byAdmin.data) {
+    createdSettlements.push(byAdmin.data as string);
+    const row = await rowOf(byAdmin.data as string);
+    check('admin-recorded row: recorded_by = the admin', row.recorded_by === MEMBER_ASHA,
+      String(row.recorded_by));
+  }
+
+  // ---- 3. a plain non-party member is REFUSED, and nothing is written -----
+  // Bhavi is a member but neither party and not admin. This is the A1-shaped
+  // hole in a new place: asserting a payment about other people's money.
+  const before = Number(
+    (await db.query<{ c: string }>(`select count(*) c from settlements where group_id = $1`, [GROUP_ID])).rows[0].c,
+  );
+  const byStranger = await bhavi.rpc('record_cash_settlement', {
+    p_group_id: GROUP_ID,
+    p_from_member: MEMBER_CHIN,
+    p_to_member: MEMBER_ASHA,
+    p_amount_minor: 9999,
+  });
+  check('plain non-party member is REFUSED', !!byStranger.error,
+    byStranger.error?.message?.slice(0, 70) ?? 'no error raised');
+  const after = Number(
+    (await db.query<{ c: string }>(`select count(*) c from settlements where group_id = $1`, [GROUP_ID])).rows[0].c,
+  );
+  check('refused attempt created NO row (rollback)', after === before,
+    `before=${before} after=${after}`);
+
+  // ---- 4. two real accounts is REFUSED ------------------------------------
+  // Without this guard, one account-holder could mark a payment to another as
+  // confirmed without the payee ever agreeing - worse than the hole being closed.
+  const twoReal = await asha.rpc('record_cash_settlement', {
+    p_group_id: GROUP_ID,
+    p_from_member: MEMBER_BHAVI,
+    p_to_member: MEMBER_ASHA,
+    p_amount_minor: 100,
+  });
+  check('two real-account parties are REFUSED', !!twoReal.error,
+    twoReal.error?.message?.slice(0, 70) ?? 'no error raised');
+
+  // ---- 5 + 6. balances move identically, and still sum to zero ------------
+  // A confirmed cash row must be arithmetically indistinguishable from a
+  // confirmed UPI one: group_balances() reads status, never method.
+  const ashaBefore = await netOf(MEMBER_ASHA);
+  const chinBefore = await netOf(MEMBER_CHIN);
+
+  const moving = await asha.rpc('record_cash_settlement', {
+    p_group_id: GROUP_ID,
+    p_from_member: MEMBER_CHIN,
+    p_to_member: MEMBER_ASHA,
+    p_amount_minor: 2500,
+  });
+  check('cash settlement for the balance check accepted', !moving.error, moving.error?.message ?? '');
+  if (moving.data) createdSettlements.push(moving.data as string);
+
+  const ashaAfter = await netOf(MEMBER_ASHA);
+  const chinAfter = await netOf(MEMBER_CHIN);
+
+  // from_member +amount, to_member -amount - the same expression a confirmed
+  // UPI settlement moves.
+  eq('cash moves payer net by +amount', chinAfter - chinBefore, 2500n);
+  eq('cash moves payee net by -amount', ashaAfter - ashaBefore, -2500n);
+
+  const sum = (await db.query<{ s: string }>(
+    `select coalesce(sum(net_minor),0) s from group_balances($1)`, [GROUP_ID],
+  )).rows[0].s;
+  eq('INVARIANT #7 - still sums to zero after cash', BigInt(sum), 0n);
+
+  // ---- 7. reverse direction: a placeholder OWES you ----------------------
+  const reverse = await asha.rpc('record_cash_settlement', {
+    p_group_id: GROUP_ID,
+    p_from_member: MEMBER_ASHA,
+    p_to_member: MEMBER_CHIN,
+    p_amount_minor: 700,
+  });
+  check('reverse direction (you pay a placeholder) works', !reverse.error,
+    reverse.error?.message ?? '');
+  if (reverse.data) {
+    createdSettlements.push(reverse.data as string);
+    const row = await rowOf(reverse.data as string);
+    check('reverse row is cash + confirmed', row.method === 'cash' && row.status === 'confirmed',
+      `${row.method}/${row.status}`);
+  }
+
+  // ---- 8. UPI REGRESSION -------------------------------------------------
+  // record_settlement must still create PENDING rows, now defaulting to
+  // method='upi', and confirm_settlement must still work unchanged.
+  const upi = await bhavi.rpc('record_settlement', {
+    p_group_id: GROUP_ID,
+    p_from_member: MEMBER_BHAVI,
+    p_to_member: MEMBER_ASHA,
+    p_amount_minor: 300,
+  });
+  check('UPI regression: record_settlement still works', !upi.error, upi.error?.message ?? '');
+  if (upi.data) {
+    createdSettlements.push(upi.data as string);
+    const row = await rowOf(upi.data as string);
+    check('UPI regression: method defaults to upi', row.method === 'upi', row.method);
+    check('UPI regression: still pending (two-step intact)', row.status === 'pending', row.status);
+    check('UPI regression: recorded_by stays NULL', row.recorded_by === null, String(row.recorded_by));
+
+    const conf = await asha.rpc('confirm_settlement', { p_settlement_id: upi.data });
+    check('UPI regression: confirm_settlement unchanged', !conf.error, conf.error?.message ?? '');
+    const after2 = await rowOf(upi.data as string);
+    check('UPI regression: confirms to confirmed', after2.status === 'confirmed', after2.status);
+  }
+
+  // ---- 9. legacy rows -----------------------------------------------------
+  // The seeded settlement predates these columns in spirit: it was inserted
+  // directly, so it exercises the DEFAULT rather than the RPC.
+  const legacy = await rowOf(SETTLEMENT_1);
+  check('legacy row reads method=upi', legacy.method === 'upi', legacy.method);
+  check('legacy row recorded_by IS NULL', legacy.recorded_by === null, String(legacy.recorded_by));
+  check('legacy confirmed row still counts toward balances', legacy.status === 'confirmed',
+    legacy.status);
+
+  // Leave the group as the earlier sections expect it.
+  for (const id of createdSettlements) {
+    await db.query(`delete from settlements where id = $1`, [id]);
+  }
+  console.log(`  cleaned up ${createdSettlements.length} test settlements`);
 }
 
 async function assertRlsEnabled(): Promise<void> {
