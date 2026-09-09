@@ -35,7 +35,13 @@ export async function createGroup(
     p_group_type: groupType,
   });
 
-  if (error) return { error: error.message };
+  if (error) {
+    // The RPC's own text never reaches the screen; an RLS refusal must read as a
+    // sentence, not as a policy name. The validation returns above are our own
+    // copy and are safe to show.
+    console.error('createGroup failed:', error.message);
+    return { error: 'We could not create that group. Try again.' };
+  }
 
   revalidatePath('/groups');
   redirect(`/groups/${groupId}`);

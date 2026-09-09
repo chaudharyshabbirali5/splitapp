@@ -3,7 +3,7 @@
 or "what was I supposed to fix before launch?" Keep it updated as things change.
 
 _Snapshot as of: after Step 8 (PWA), the A1 security fix, group archive, the design pass, the teal/coral retheme and the monorepo restructure. Update the date whenever you edit._
-_Last updated: 2026-09-01 (after the exact-shares path, commit 1f50850)_
+_Last updated: 2026-09-09 (after the cash-settle path and create-group restructure)_
 
 > New to this project, or a fresh AI session? Read **HANDOFF.md** first — it tells the
 > whole story from step 1 and explains how we work. This file is the "why" and the
@@ -358,6 +358,15 @@ question instead of a bug.
   all-groups-RPC decision. This is the one item with a database dependency.
 - **Mount the theme toggle on Profile.** Already built; see section 3.
 - **Custom split** on the add-expense screen is explicitly Stage 7, not Stage 4.
+- **The cash-settle dead-button state (2d) has never been seen.** When a viewer is
+  neither the counterparty nor the group admin, the placeholder row shows a disabled
+  "Settle in cash" with an explanatory hint. Verifying it needs a SECOND account sitting
+  in the same group as a non-party, which no test account currently provides. The
+  authorization itself is proven — `record_cash_settlement` is SECURITY DEFINER and its
+  counterparty-or-admin rule is asserted by the acceptance suite, including that a plain
+  member is refused and no row survives. So the exposure is **UX only**: a wrong button
+  offer would produce a server error on tap or hide a legitimate action, not a security
+  hole. Worth a look the next time two accounts are in one group.
 
 ### User-facing gaps (not blocking, but someone will hit these)
 - **Build an "Archived groups" / un-archive screen.** Archiving works, but there is **no way

@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
 import { createClient } from '@/lib/supabase/server';
@@ -29,11 +30,19 @@ export default async function NewGroupPage() {
   if (incomplete) redirect('/profile?next=%2Fgroups%2Fnew');
 
   return (
-    <main className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center gap-6 p-6 sm:p-10">
-      <div className="space-y-1.5 border-b border-rule pb-4">
-        <h1 className="page-title">New group</h1>
-        <p className="text-sm text-ink-soft">You&rsquo;ll be added as the first member.</p>
-      </div>
+    <main
+      className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-5 py-6"
+      style={{ paddingInline: 'var(--gutter)' }}
+    >
+      <header className="min-w-0">
+        <Link href="/groups" className="link-back">
+          &larr; All groups
+        </Link>
+        <h1 className="page-title pt-1">New group</h1>
+        <p className="mt-1 text-sm text-ink-soft">
+          You&rsquo;ll be added as the first member.
+        </p>
+      </header>
 
       <CreateGroupForm />
     </main>
