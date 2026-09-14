@@ -57,6 +57,7 @@ export default async function ProfilePage({
     supabase
       .from('groups')
       .select('id, name, group_type, archived_at')
+      .eq('kind', 'group') // friend tabs are not groups; they never list here
       .not('archived_at', 'is', null)
       .order('archived_at', { ascending: false }),
     // Only groups this user created can be archived by them. Convenience only:
@@ -64,6 +65,7 @@ export default async function ProfilePage({
     supabase
       .from('groups')
       .select('id, name')
+      .eq('kind', 'group') // a friend tab is never offered in the archive picker
       .eq('created_by', user.id)
       .is('archived_at', null)
       .order('created_at', { ascending: false }),

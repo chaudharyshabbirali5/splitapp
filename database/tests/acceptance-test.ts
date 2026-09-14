@@ -72,6 +72,19 @@ const M2_ASHA = '5171a11a-0000-4000-8000-0000000000a2';
 const M2_BHAVI = '5171a11a-0000-4000-8000-0000000000b2';
 const EXPENSE_3 = '5171a11a-0000-4000-8000-0000000000e3';
 
+// A THIRD group carrying kind='friend' (migration 20260914103000). It is what
+// proves my_group_positions() now excludes friend tabs and what
+// my_friend_positions() reads.
+//
+// SEEDED BY DIRECT INSERT, pending M2. create_friend_tab() is the M2 write
+// surface and does not exist yet, so these rows are written the same way every
+// other fixture here is. When M2 lands, this seed should move to that RPC so the
+// test exercises the real creation path rather than a hand-built row.
+const GROUP_F = '5171a11a-0000-4000-8000-000000000003';
+const MF_ASHA = '5171a11a-0000-4000-8000-0000000000a3';
+const MF_BHAVI = '5171a11a-0000-4000-8000-0000000000b3';
+const EXPENSE_F = '5171a11a-0000-4000-8000-0000000000e4';
+
 const ASHA_EMAIL = 'splitapp-acceptance-asha@example.com';
 const BHAVI_EMAIL = 'splitapp-acceptance-bhavi@example.com';
 const OUTSIDER_EMAIL = 'splitapp-acceptance-outsider@example.com';
@@ -129,6 +142,7 @@ async function main(): Promise<void> {
     await reportGrants();
     await assertBalances();
     await assertMyGroupPositions();
+    await assertMyFriendPositions();
     await assertMemberUniqueness();
     await assertExactShares();
     await assertCashSettlements();
@@ -262,10 +276,38 @@ async function seed(ashaUserId: string, bhaviUserId: string): Promise<void> {
     [EXPENSE_3, M2_ASHA, M2_BHAVI],
   );
 
+  // ---- third group: a FRIEND TAB (kind='friend'), Asha + Bhavi ----
+  // Seeded by direct insert pending M2 — create_friend_tab() does not exist yet.
+  // Asha paid 4000, split 2 ways -> Bhavi owes Asha 2000. Chosen so the sign is
+  // unambiguous: Asha is +2000 (owed), Bhavi is -2000 (owes), and the two must
+  // be exact mirrors when the function is called from each side.
+  await db.query(
+    `insert into groups (id, name, group_type, kind, created_by)
+     values ($1,'friend:asha:bhavi','other','friend',$2)`,
+    [GROUP_F, ashaUserId],
+  );
+  await db.query(
+    `insert into group_members (id, group_id, user_id, display_name, upi_id, role) values
+       ($1,$3,$4,'Asha','asha@upi','admin'),
+       ($2,$3,$5,'Bhavi','bhavi@upi','member')`,
+    [MF_ASHA, MF_BHAVI, GROUP_F, ashaUserId, bhaviUserId],
+  );
+  await db.query(
+    `insert into expenses (id, group_id, paid_by, amount_minor, description, created_by)
+     values ($1,$2,$3,4000,'Cab to airport',$4)`,
+    [EXPENSE_F, GROUP_F, MF_ASHA, ashaUserId],
+  );
+  await db.query(
+    `insert into expense_splits (expense_id, member_id, share_minor, share_type) values
+       ($1,$2,2000,'equal'), ($1,$3,2000,'equal')`,
+    [EXPENSE_F, MF_ASHA, MF_BHAVI],
+  );
+
   await db.query('commit');
 
   console.log('  group "Goa Trip" (trip), 3 members, 2 expenses, 6 splits, 1 confirmed settlement');
   console.log('  group "Lonavala Trip" (trip), 2 members, 1 expense, 2 splits');
+  console.log('  FRIEND TAB kind=friend, 2 members, 1 expense — Bhavi owes Asha 2000');
   check('seed committed', true);
 }
 
@@ -405,13 +447,22 @@ async function assertMyGroupPositions(): Promise<void> {
     console.log(`  group ${r.group_id.slice(0, 8)}  member ${r.my_member_id.slice(0, 8)}  net_minor = ${r.net_minor}`);
   }
 
-  // Asha is in both seeded groups, and in nothing else.
+  // Asha is in both seeded GROUPS, and in nothing else. She is also in the
+  // friend tab — the count staying at 2 is precisely the regression guard, not
+  // an accident of the seed: without the kind='group' filter this would be 3.
   check('returns one row per group the caller is in', rows.length === 2, `got ${rows.length}`);
   const ids = new Set(rows.map((r) => r.group_id));
   check('includes the placeholder group (Goa Trip)', ids.has(GROUP_ID));
   check('includes the second group (Lonavala Trip)', ids.has(GROUP_2));
   check('one row per group — no duplicates', ids.size === rows.length,
     `${ids.size} distinct vs ${rows.length} rows`);
+
+  // ---- TEST 1: friend tabs are EXCLUDED (migration 20260914103000) --------
+  // The whole point of the filter. Asha is a member of GROUP_F, so before the
+  // filter this function returned it and the Groups home screen would have
+  // listed a tab named 'friend:asha:bhavi'.
+  check('EXCLUDES kind=friend tabs', !ids.has(GROUP_F),
+    ids.has(GROUP_F) ? 'friend tab leaked into the groups list' : 'friend tab absent');
 
   // ---- the drift assertion, per group ----
   for (const r of rows) {
@@ -447,6 +498,148 @@ async function assertMyGroupPositions(): Promise<void> {
   // A non-member must get nothing at all — not a zero, not a row.
   const outsider = await signInAs(OUTSIDER_EMAIL);
   const { data: oData, error: oErr } = await outsider.rpc('my_group_positions');
+  check('non-member gets 0 rows (INVOKER + anchor)', !oErr && (oData ?? []).length === 0,
+    `err=${oErr?.message ?? 'none'} rows=${(oData ?? []).length}`);
+}
+
+/**
+ * my_friend_positions() — the dedicated friend-tab read (migration 20260914103000).
+ *
+ * SECURITY INVOKER, so every call here goes through PostgREST with a real
+ * member JWT: that is the path the app uses and the one where auth.uid() and
+ * RLS actually apply.
+ *
+ * Fixture: GROUP_F carries kind='friend' with Asha + Bhavi. Asha paid 4000,
+ * split 2 ways, so Asha is +2000 (owed) and Bhavi is -2000 (owes). Seeded by
+ * direct insert pending M2 — create_friend_tab() does not exist yet.
+ */
+async function assertMyFriendPositions(): Promise<void> {
+  section('6b. my_friend_positions() — signed net and counterparty resolution');
+
+  await db.query(`notify pgrst, 'reload schema'`);
+  await new Promise((r) => setTimeout(r, 1500));
+
+  type FriendPos = {
+    group_id: string;
+    my_member_id: string;
+    counterparty_member_id: string;
+    counterparty_user_id: string;
+    name: string;
+    upi: string | null;
+    net_minor: string;
+    last_entry_description: string | null;
+    last_entry_at: string | null;
+  };
+
+  const asha = await signInAs(ASHA_EMAIL);
+  const bhavi = await signInAs(BHAVI_EMAIL);
+
+  const readAs = async (client: Awaited<ReturnType<typeof signInAs>>) => {
+    const { data, error } = await client.rpc('my_friend_positions');
+    if (error) throw new Error(`rpc my_friend_positions failed: ${error.message}`);
+    return (data ?? []) as FriendPos[];
+  };
+
+  // ---- shape: only friend tabs, never the real groups ---------------------
+  const ashaRows = await readAs(asha);
+  for (const r of ashaRows) {
+    console.log(
+      `  tab ${r.group_id.slice(0, 8)}  vs ${r.name.padEnd(6)}  net_minor = ${r.net_minor}`,
+    );
+  }
+
+  check('returns only the friend tab', ashaRows.length === 1, `got ${ashaRows.length}`);
+  const aTab = ashaRows.find((r) => r.group_id === GROUP_F);
+  check('the row IS the friend tab', aTab !== undefined);
+  const gids = new Set(ashaRows.map((r) => r.group_id));
+  check('does NOT return kind=group rows', !gids.has(GROUP_ID) && !gids.has(GROUP_2));
+
+  if (aTab) {
+    // ---- TEST 2a: friend-owes-you (positive from Asha's POV) --------------
+    eq('FRIEND OWES YOU — Asha net is +2000', BigInt(aTab.net_minor), 2000n);
+
+    // ---- TEST 3a: counterparty resolution from Asha's side ----------------
+    check('Asha my_member_id is her own member row', aTab.my_member_id === MF_ASHA,
+      `${aTab.my_member_id.slice(0, 8)} vs ${MF_ASHA.slice(0, 8)}`);
+    check('Asha counterparty_member_id is Bhavi', aTab.counterparty_member_id === MF_BHAVI,
+      `${aTab.counterparty_member_id.slice(0, 8)} vs ${MF_BHAVI.slice(0, 8)}`);
+    check('Asha sees the counterparty NAME as Bhavi', aTab.name === 'Bhavi', aTab.name);
+    check('Asha sees the counterparty UPI as bhavi@upi', aTab.upi === 'bhavi@upi', String(aTab.upi));
+    check('last_entry is the seeded expense', aTab.last_entry_description === 'Cab to airport',
+      String(aTab.last_entry_description));
+
+    // Parity with the existing balance source of truth, the same drift
+    // assertion my_group_positions() carries. A change to one of the three
+    // balance computations must be mirrored in the others, and this is what
+    // fails if it is not.
+    const gb = await db.query<{ net_minor: string }>(
+      `select net_minor from group_balances($1) where member_id = $2`,
+      [GROUP_F, MF_ASHA],
+    );
+    check('group_balances has Asha row for the friend tab', gb.rows.length === 1);
+    if (gb.rows.length === 1) {
+      eq('DRIFT — my_friend_positions === group_balances', BigInt(aTab.net_minor),
+        BigInt(gb.rows[0].net_minor));
+    }
+  }
+
+  // ---- TEST 2b + 3b: the SAME tab from Bhavi's POV ------------------------
+  // Sign must invert and the counterparty must flip. Reading the same row from
+  // both sides is the only way to catch a function that hardcodes one side.
+  const bhaviRows = await readAs(bhavi);
+  const bTab = bhaviRows.find((r) => r.group_id === GROUP_F);
+  check('Bhavi also sees the friend tab', bTab !== undefined, `got ${bhaviRows.length} rows`);
+
+  if (bTab && aTab) {
+    eq('YOU OWE — Bhavi net is -2000', BigInt(bTab.net_minor), -2000n);
+    eq('sign INVERTS between the two sides', BigInt(aTab.net_minor) + BigInt(bTab.net_minor), 0n);
+
+    check('Bhavi my_member_id is his own member row', bTab.my_member_id === MF_BHAVI,
+      `${bTab.my_member_id.slice(0, 8)} vs ${MF_BHAVI.slice(0, 8)}`);
+    check('Bhavi counterparty_member_id is Asha', bTab.counterparty_member_id === MF_ASHA,
+      `${bTab.counterparty_member_id.slice(0, 8)} vs ${MF_ASHA.slice(0, 8)}`);
+    check('counterparty NAME flips to Asha', bTab.name === 'Asha', bTab.name);
+    check('counterparty_user_id differs between the two sides',
+      aTab.counterparty_user_id !== bTab.counterparty_user_id);
+  }
+
+  // ---- TEST 2c: SETTLED (net 0) ------------------------------------------
+  // Bhavi pays Asha the full 2000 and Asha confirms, through the real two-step
+  // UPI path — which is also the first proof that a kind='friend' group settles
+  // through record_settlement unchanged.
+  const rec = await bhavi.rpc('record_settlement', {
+    p_group_id: GROUP_F,
+    p_from_member: MF_BHAVI,
+    p_to_member: MF_ASHA,
+    p_amount_minor: 2000,
+  });
+  check('record_settlement works on a friend tab', !rec.error, rec.error?.message ?? '');
+
+  if (rec.data) {
+    const settlementId = rec.data as string;
+
+    // Pending must NOT move the balance yet.
+    const midA = (await readAs(asha)).find((r) => r.group_id === GROUP_F);
+    eq('pending settlement does NOT move the net', BigInt(midA?.net_minor ?? '-1'), 2000n);
+
+    const conf = await asha.rpc('confirm_settlement', { p_settlement_id: settlementId });
+    check('confirm_settlement works on a friend tab', !conf.error, conf.error?.message ?? '');
+
+    const doneA = (await readAs(asha)).find((r) => r.group_id === GROUP_F);
+    const doneB = (await readAs(bhavi)).find((r) => r.group_id === GROUP_F);
+    eq('SETTLED — Asha net is 0', BigInt(doneA?.net_minor ?? '-1'), 0n);
+    eq('SETTLED — Bhavi net is 0', BigInt(doneB?.net_minor ?? '-1'), 0n);
+
+    // Leave the tab as the seed built it, so this section is re-runnable and
+    // nothing downstream sees a settled tab.
+    await db.query(`delete from settlements where id = $1`, [settlementId]);
+  }
+
+  // ---- TEST 4: a non-member gets nothing (RLS / anchor scoping) -----------
+  // Not a zero row, not an empty-named row — no row at all. The anchor is
+  // gm.user_id = auth.uid(), and members_select backs it up.
+  const outsider = await signInAs(OUTSIDER_EMAIL);
+  const { data: oData, error: oErr } = await outsider.rpc('my_friend_positions');
   check('non-member gets 0 rows (INVOKER + anchor)', !oErr && (oData ?? []).length === 0,
     `err=${oErr?.message ?? 'none'} rows=${(oData ?? []).length}`);
 }
@@ -1048,7 +1241,7 @@ async function cleanup(): Promise<void> {
   // Ordered by FK dependency — expense_splits.member_id and settlements.*_member
   // reference group_members without ON DELETE CASCADE.
   await db.query('begin');
-  for (const g of [GROUP_ID, GROUP_2]) {
+  for (const g of [GROUP_ID, GROUP_2, GROUP_F]) {
     await db.query(`delete from expense_splits where expense_id in (select id from expenses where group_id = $1)`, [g]);
     await db.query(`delete from settlements where group_id = $1`, [g]);
     await db.query(`delete from expenses where group_id = $1`, [g]);
