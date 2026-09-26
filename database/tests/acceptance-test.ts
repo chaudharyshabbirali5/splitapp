@@ -85,9 +85,33 @@ const MF_ASHA = '5171a11a-0000-4000-8000-0000000000a3';
 const MF_BHAVI = '5171a11a-0000-4000-8000-0000000000b3';
 const EXPENSE_F = '5171a11a-0000-4000-8000-0000000000e4';
 
+// M2 (20260915093000) creates friend tabs through create_friend_tab(), which
+// generates its own uuids — there is no fixture id to clean up by. Cleanup
+// therefore finds them by joining friendships to the test users, and separately
+// sweeps any kind='friend' group whose members are test users, which is what an
+// orphan from a failed race would look like.
 const ASHA_EMAIL = 'splitapp-acceptance-asha@example.com';
 const BHAVI_EMAIL = 'splitapp-acceptance-bhavi@example.com';
 const OUTSIDER_EMAIL = 'splitapp-acceptance-outsider@example.com';
+
+// A FOURTH identity, existing only to be the other side of section 10's create
+// race.
+//
+// The race has to make its participants real members of the tab it creates —
+// that is what creating a tab MEANS. Running it as OUTSIDER_EMAIL therefore
+// destroyed section 7's premise: that account stopped being a non-member, and
+// "non-member sees 0 groups over the API" correctly started reporting 1.
+//
+// Rejected the alternative of tearing the race tab down before section 7: that
+// would delete the very rows proving the race resolved to one tab, to protect a
+// later assertion. A separate identity keeps BOTH tests at full strength and
+// removes the ordering coupling entirely — section 7's outsider is now a true
+// non-member no matter what section 10 does.
+const RACER_EMAIL = 'splitapp-acceptance-racer@example.com';
+
+// Derived from the four above rather than restated, so a changed address
+// cannot leave cleanup hunting for an email nothing uses.
+const TEST_EMAILS_FOR_CLEANUP = [ASHA_EMAIL, BHAVI_EMAIL, OUTSIDER_EMAIL, RACER_EMAIL];
 
 const RLS_TABLES = ['profiles', 'groups', 'group_members', 'expenses', 'expense_splits', 'settlements'];
 
@@ -136,7 +160,7 @@ async function main(): Promise<void> {
 
   try {
     await cleanup(); // in case a previous run died mid-way
-    const { ashaUserId, bhaviUserId, outsiderUserId } = await createAuthUsers();
+    const { ashaUserId, bhaviUserId, outsiderUserId, racerUserId } = await createAuthUsers();
     await seed(ashaUserId, bhaviUserId);
     await assertSplitInvariant();
     await reportGrants();
@@ -146,6 +170,7 @@ async function main(): Promise<void> {
     await assertMemberUniqueness();
     await assertExactShares();
     await assertCashSettlements();
+    await assertFriendTabCreation(ashaUserId, bhaviUserId, racerUserId);
     await assertRlsEnabled();
     await assertRlsBehaviour(ashaUserId, outsiderUserId);
   } finally {
@@ -169,13 +194,15 @@ async function createAuthUsers() {
   const ashaUserId = await createUser(ASHA_EMAIL);
   const bhaviUserId = await createUser(BHAVI_EMAIL);
   const outsiderUserId = await createUser(OUTSIDER_EMAIL);
+  const racerUserId = await createUser(RACER_EMAIL);
 
   console.log(`  Asha     auth.users.id = ${ashaUserId}`);
   console.log(`  Bhavi    auth.users.id = ${bhaviUserId}`);
   console.log(`  Outsider auth.users.id = ${outsiderUserId}  (non-member, for the RLS check)`);
+  console.log(`  Racer    auth.users.id = ${racerUserId}  (section 10's create race only)`);
   console.log('  Chin     has NO auth user — placeholder member, user_id stays NULL');
 
-  return { ashaUserId, bhaviUserId, outsiderUserId };
+  return { ashaUserId, bhaviUserId, outsiderUserId, racerUserId };
 }
 
 async function createUser(email: string): Promise<string> {
@@ -1116,6 +1143,247 @@ async function assertCashSettlements(): Promise<void> {
   console.log(`  cleaned up ${createdSettlements.length} test settlements`);
 }
 
+/**
+ * create_friend_tab() + the two-member cap (migration 20260915093000).
+ *
+ * Every call goes through PostgREST with a real member JWT. That is not a style
+ * choice here: create_friend_tab reads auth.uid(), so it CANNOT be exercised
+ * through the service-role pg connection the seed uses — a direct call would see
+ * a null uid and raise 28000.
+ *
+ * These tests are ADDITIVE. M1's GROUP_F seed stays a direct insert: section 6b
+ * asserts my_member_id === MF_ASHA against hardcoded fixture uuids, and
+ * create_friend_tab generates its own, so switching the seed would mean
+ * rewriting those assertions to chase generated ids. The task said leave it if
+ * it complicates them, and it does.
+ */
+async function assertFriendTabCreation(
+  ashaUserId: string,
+  bhaviUserId: string,
+  racerUserId: string,
+): Promise<void> {
+  section('10. create_friend_tab — idempotent, race-safe, capped at two');
+
+  await db.query(`notify pgrst, 'reload schema'`);
+  await new Promise((r) => setTimeout(r, 1500));
+
+  const asha = await signInAs(ASHA_EMAIL);
+  const bhavi = await signInAs(BHAVI_EMAIL);
+  // The racer, NOT the outsider: creating a tab makes both parties real members
+  // of it, and section 7 needs OUTSIDER_EMAIL to stay a true non-member.
+  const racer = await signInAs(RACER_EMAIL);
+
+  const lo = ashaUserId < bhaviUserId ? ashaUserId : bhaviUserId;
+  const hi = ashaUserId < bhaviUserId ? bhaviUserId : ashaUserId;
+
+  // ---- 1. CREATION SHAPE -------------------------------------------------
+  const created = await asha.rpc('create_friend_tab', { p_other: bhaviUserId });
+  check('create_friend_tab succeeds', !created.error, created.error?.message ?? '');
+
+  const tabId = created.data as string | null;
+  check('returns a group id', typeof tabId === 'string' && tabId.length === 36, String(tabId));
+
+  if (tabId) {
+    const g = await db.query<{ kind: string; group_type: string; name: string; created_by: string }>(
+      `select kind, group_type, name, created_by from groups where id = $1`, [tabId],
+    );
+    check('group exists', g.rows.length === 1);
+    check('group kind is friend', g.rows[0]?.kind === 'friend', g.rows[0]?.kind ?? 'missing');
+    check('group_type is other (not overloaded)', g.rows[0]?.group_type === 'other',
+      g.rows[0]?.group_type ?? 'missing');
+    check('name is the deterministic sentinel',
+      g.rows[0]?.name === `friend:${lo.slice(0, 8)}:${hi.slice(0, 8)}`, g.rows[0]?.name ?? 'missing');
+    check('created_by is the caller', g.rows[0]?.created_by === ashaUserId);
+
+    const m = await db.query<{ user_id: string | null; role: string; display_name: string }>(
+      `select user_id, role, display_name from group_members where group_id = $1 order by joined_at`,
+      [tabId],
+    );
+    check('exactly 2 members', m.rows.length === 2, `got ${m.rows.length}`);
+    check('both members are REAL users (no placeholder)',
+      m.rows.every((r) => r.user_id !== null), JSON.stringify(m.rows.map((r) => r.user_id)));
+    check('caller is admin', m.rows.find((r) => r.user_id === ashaUserId)?.role === 'admin');
+    check('other is member', m.rows.find((r) => r.user_id === bhaviUserId)?.role === 'member');
+    check('display names came from profiles',
+      m.rows.some((r) => r.display_name === 'Asha') && m.rows.some((r) => r.display_name === 'Bhavi'),
+      JSON.stringify(m.rows.map((r) => r.display_name)));
+
+    const f = await db.query<{ user_lo: string; user_hi: string; group_id: string }>(
+      `select user_lo, user_hi, group_id from friendships where group_id = $1`, [tabId],
+    );
+    check('friendship row exists', f.rows.length === 1, `got ${f.rows.length}`);
+    check('pair is CANONICALISED (lo < hi)', f.rows[0]?.user_lo === lo && f.rows[0]?.user_hi === hi,
+      `${f.rows[0]?.user_lo?.slice(0, 8)} / ${f.rows[0]?.user_hi?.slice(0, 8)}`);
+  }
+
+  // ---- 2. IDEMPOTENCE ----------------------------------------------------
+  const again = await asha.rpc('create_friend_tab', { p_other: bhaviUserId });
+  check('second call succeeds', !again.error, again.error?.message ?? '');
+  check('second call returns the SAME group id', again.data === tabId,
+    `${String(again.data).slice(0, 8)} vs ${String(tabId).slice(0, 8)}`);
+
+  const oneRow = await db.query<{ c: string }>(
+    `select count(*) c from friendships where user_lo = $1 and user_hi = $2`, [lo, hi],
+  );
+  check('still exactly ONE friendship row', oneRow.rows[0].c === '1', oneRow.rows[0].c);
+
+  // ---- 3. CANONICALISATION: the other direction --------------------------
+  // Bhavi asks for a tab with Asha. least/greatest must land on the same pair.
+  const reversed = await bhavi.rpc('create_friend_tab', { p_other: ashaUserId });
+  check('reverse direction succeeds', !reversed.error, reversed.error?.message ?? '');
+  check('B->A returns the SAME tab as A->B', reversed.data === tabId,
+    `${String(reversed.data).slice(0, 8)} vs ${String(tabId).slice(0, 8)}`);
+
+  const stillOne = await db.query<{ c: string }>(
+    `select count(*) c from friendships where user_lo = $1 and user_hi = $2`, [lo, hi],
+  );
+  check('reverse direction created NO second row', stillOne.rows[0].c === '1', stillOne.rows[0].c);
+
+  // ---- 4. THE RACE -------------------------------------------------------
+  // Both calls fired without awaiting between them. On a real collision one
+  // hits friendships_pair_unique and its whole create sequence rolls back to
+  // the subtransaction savepoint. Asha <-> Racer is a fresh pair, so this is a
+  // genuine create race rather than two fast-path reads.
+  const [r1, r2] = await Promise.all([
+    asha.rpc('create_friend_tab', { p_other: racerUserId }),
+    racer.rpc('create_friend_tab', { p_other: ashaUserId }),
+  ]);
+  check('race: first call resolved without error', !r1.error, r1.error?.message ?? '');
+  check('race: second call resolved without error', !r2.error, r2.error?.message ?? '');
+  check('race: BOTH resolved to the same tab', r1.data === r2.data,
+    `${String(r1.data).slice(0, 8)} vs ${String(r2.data).slice(0, 8)}`);
+
+  const rLo = ashaUserId < racerUserId ? ashaUserId : racerUserId;
+  const rHi = ashaUserId < racerUserId ? racerUserId : ashaUserId;
+  const raceRows = await db.query<{ c: string }>(
+    `select count(*) c from friendships where user_lo = $1 and user_hi = $2`, [rLo, rHi],
+  );
+  check('race: exactly ONE friendship row', raceRows.rows[0].c === '1', raceRows.rows[0].c);
+
+  // The orphan check — the actual point of the savepoint. A losing call must
+  // not leave a kind='friend' group with no friendship row behind it.
+  //
+  // count(DISTINCT g.id), not count(*): the group_members join fans out one row
+  // PER MEMBER, so a single orphan would report as 2 and the number would be
+  // meaningless.
+  //
+  // GROUP_F is excluded because it is not an orphan — M1 seeds it by direct
+  // insert, deliberately without a friendships row, which is exactly the shape
+  // this query looks for. Leaving it in made the assertion fail on a fixture
+  // that is working as designed. Only tabs created THROUGH create_friend_tab
+  // can orphan, and those are the ones this scopes to.
+  const orphans = await db.query<{ c: string }>(
+    `select count(distinct g.id) c
+       from groups g
+       left join friendships f on f.group_id = g.id
+       join group_members gm on gm.group_id = g.id
+       join profiles p on p.id = gm.user_id
+       join auth.users u on u.id = p.id
+      where g.kind = 'friend'
+        and f.group_id is null
+        and g.id <> $2
+        and u.email = any($1)`,
+    [TEST_EMAILS_FOR_CLEANUP, GROUP_F],
+  );
+  check('race: NO orphaned friend group without a friendship', orphans.rows[0].c === '0',
+    `${orphans.rows[0].c} orphan(s)`);
+
+  // ---- 5. REJECTIONS -----------------------------------------------------
+  const self = await asha.rpc('create_friend_tab', { p_other: ashaUserId });
+  check('self-friend is REJECTED', !!self.error, self.error?.message ?? 'NO ERROR — hole');
+
+  const missing = await asha.rpc('create_friend_tab', {
+    p_other: '5171a11a-0000-4000-8000-00000000dead',
+  });
+  check('unknown profile is REJECTED', !!missing.error, missing.error?.message ?? 'NO ERROR — hole');
+
+  // anon reachability: the grant is execute-to-authenticated only, so an
+  // unauthenticated client must be refused by the GRANT, before auth.uid() is
+  // ever consulted.
+  const anonClient = createClient(SUPABASE_URL, ANON_KEY, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  const anonCall = await anonClient.rpc('create_friend_tab', { p_other: bhaviUserId });
+  check('anon CANNOT execute create_friend_tab', !!anonCall.error,
+    anonCall.error?.message ?? 'NO ERROR — hole');
+
+  // ---- 6. THE CAP TRIGGER ------------------------------------------------
+  // A third member into a friend tab, inserted directly as the table owner —
+  // the most privileged path there is. The trigger is SECURITY DEFINER and
+  // fires regardless, so this must still be refused.
+  let capBlocked = false;
+  let capDetail = '';
+  if (tabId) {
+    try {
+      await db.query('begin');
+      await db.query(
+        `insert into group_members (group_id, user_id, display_name, role)
+         values ($1,$2,'Third wheel','member')`,
+        [tabId, racerUserId],
+      );
+      await db.query('rollback');
+    } catch (e) {
+      capBlocked = true;
+      capDetail = (e as Error).message.split(String.fromCharCode(10))[0];
+      await db.query('rollback');
+    }
+  }
+  check('third member on a friend tab is REJECTED', capBlocked, capDetail);
+
+  // The other half: the trigger must be a strict NO-OP for normal groups.
+  // Goa Trip already holds three members; a fourth must still be allowed.
+  let normalGroupOk = false;
+  let normalDetail = '';
+  try {
+    await db.query('begin');
+    await db.query(
+      `insert into group_members (group_id, user_id, display_name, role)
+       values ($1,null,'Fourth member','member')`,
+      [GROUP_ID],
+    );
+    normalGroupOk = true;
+    await db.query('rollback');
+  } catch (e) {
+    normalDetail = (e as Error).message.split(String.fromCharCode(10))[0];
+    await db.query('rollback');
+  }
+  check('kind=group group can STILL add a 4th member (trigger is a no-op)',
+    normalGroupOk, normalDetail);
+
+  // ---- 7. INTEGRATION WITH M1 -------------------------------------------
+  // The tab create_friend_tab just made must show up in my_friend_positions()
+  // with the right counterparty — end to end, M2 write into M1 read.
+  const { data: fpData, error: fpErr } = await asha.rpc('my_friend_positions');
+  check('my_friend_positions still succeeds', !fpErr, fpErr?.message ?? '');
+  type FP = { group_id: string; counterparty_user_id: string; name: string; net_minor: string };
+  const fpRows = (fpData ?? []) as FP[];
+  const newTab = fpRows.find((r) => r.group_id === tabId);
+  check('the new tab appears in my_friend_positions', newTab !== undefined,
+    `${fpRows.length} tabs visible`);
+  if (newTab) {
+    check('counterparty resolves to Bhavi', newTab.counterparty_user_id === bhaviUserId
+      && newTab.name === 'Bhavi', `${newTab.name}`);
+    eq('a brand-new tab nets to zero', BigInt(newTab.net_minor), 0n);
+  }
+
+  // ---- 8. FRIENDSHIPS RLS ------------------------------------------------
+  // The racer is in the Asha<->Racer tab from the race, so they see that ONE
+  // row — and must not see the Asha<->Bhavi pair they are not part of.
+  const { data: oRows, error: oErr } = await racer.from('friendships').select('group_id');
+  check('friendships select works for a party', !oErr, oErr?.message ?? '');
+  const visible = new Set((oRows ?? []).map((r) => (r as { group_id: string }).group_id));
+  check('a third party does NOT see a pair they are not in', !visible.has(tabId ?? ''),
+    `sees ${visible.size} row(s)`);
+
+  // Direct DML must be refused even though the default privileges would
+  // otherwise have granted it — this is what the explicit revoke buys.
+  const badInsert = await racer.from('friendships').insert({
+    user_lo: lo, user_hi: hi, group_id: tabId,
+  });
+  check('direct INSERT into friendships is REFUSED', !!badInsert.error,
+    badInsert.error?.message ?? 'NO ERROR — hole');
+}
+
 async function assertRlsEnabled(): Promise<void> {
   section('6. RLS ENABLED on all six tables');
 
@@ -1241,7 +1509,28 @@ async function cleanup(): Promise<void> {
   // Ordered by FK dependency — expense_splits.member_id and settlements.*_member
   // reference group_members without ON DELETE CASCADE.
   await db.query('begin');
-  for (const g of [GROUP_ID, GROUP_2, GROUP_F]) {
+
+  // Friend tabs created by create_friend_tab() have GENERATED uuids, so they
+  // cannot be named in the fixed list below. Resolve them from the test users:
+  // any kind='friend' group holding a member row for one of the test accounts.
+  // Without this the suite leaks a group + 2 members + a friendship into prod
+  // on every run, and the idempotence assertions stop meaning anything because
+  // the pair already exists before the run starts.
+  const { rows: friendGroups } = await db.query<{ id: string }>(
+    `select distinct g.id
+       from groups g
+       join group_members gm on gm.group_id = g.id
+       join profiles p       on p.id = gm.user_id
+       join auth.users u     on u.id = p.id
+      where g.kind = 'friend' and u.email = any($1)`,
+    [TEST_EMAILS_FOR_CLEANUP],
+  );
+
+  // friendships rows go first: group_id is ON DELETE CASCADE, so deleting the
+  // group would take them anyway, but being explicit means a failure here is
+  // visible rather than silently relying on cascade order.
+  for (const g of [GROUP_ID, GROUP_2, GROUP_F, ...friendGroups.map((r) => r.id)]) {
+    await db.query(`delete from friendships where group_id = $1`, [g]);
     await db.query(`delete from expense_splits where expense_id in (select id from expenses where group_id = $1)`, [g]);
     await db.query(`delete from settlements where group_id = $1`, [g]);
     await db.query(`delete from expenses where group_id = $1`, [g]);
@@ -1250,8 +1539,9 @@ async function cleanup(): Promise<void> {
   }
   await db.query('commit');
 
-  // profiles rows cascade from auth.users
-  const emails = [ASHA_EMAIL, BHAVI_EMAIL, OUTSIDER_EMAIL];
+  // profiles rows cascade from auth.users. Uses the derived list rather than a
+  // second hardcoded one, so a new test identity cannot be left behind in prod.
+  const emails = TEST_EMAILS_FOR_CLEANUP;
   const { data } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
   for (const u of data?.users ?? []) {
     if (u.email && emails.includes(u.email)) await admin.auth.admin.deleteUser(u.id);
