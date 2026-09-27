@@ -171,6 +171,7 @@ async function main(): Promise<void> {
     await assertExactShares();
     await assertCashSettlements();
     await assertFriendTabCreation(ashaUserId, bhaviUserId, racerUserId);
+    await assertPlaceholderFriendTabs(ashaUserId);
     await assertRlsEnabled();
     await assertRlsBehaviour(ashaUserId, outsiderUserId);
   } finally {
@@ -1384,6 +1385,243 @@ async function assertFriendTabCreation(
     badInsert.error?.message ?? 'NO ERROR — hole');
 }
 
+/**
+ * create_placeholder_friend_tab() — a friend tab with someone not on SplitApp
+ * (migration 20260927101500).
+ *
+ * Through PostgREST with a real JWT, like section 10: the RPC reads auth.uid()
+ * and a service-role call would see a null uid and raise 28000.
+ *
+ * The distinguishing fact under test is that the counterparty has NO profiles
+ * row. Everything that resolves a name, a UPI ID or a balance for that side must
+ * therefore come from group_members, and cash settlement — refused on a
+ * real-to-real tab — must be REACHABLE here, because a placeholder can never tap
+ * "Confirm received".
+ */
+async function assertPlaceholderFriendTabs(ashaUserId: string): Promise<void> {
+  section('11. create_placeholder_friend_tab — a tab with someone not on the app');
+
+  await db.query(`notify pgrst, 'reload schema'`);
+  await new Promise((r) => setTimeout(r, 1500));
+
+  const asha = await signInAs(ASHA_EMAIL);
+  const PH_NAME = 'Ravi (not on app)';
+  const PH_UPI = 'ravi@okicici';
+
+  // ---- 1. CREATION SHAPE -------------------------------------------------
+  const made = await asha.rpc('create_placeholder_friend_tab', {
+    p_name: PH_NAME,
+    p_upi: PH_UPI,
+  });
+  check('create_placeholder_friend_tab succeeds', !made.error, made.error?.message ?? '');
+
+  const tabId = made.data as string | null;
+  check('returns a group id', typeof tabId === 'string' && tabId.length === 36, String(tabId));
+  if (!tabId) return; // nothing below is meaningful without the tab
+
+  const g = await db.query<{ kind: string; group_type: string; name: string; created_by: string }>(
+    `select kind, group_type, name, created_by from groups where id = $1`, [tabId],
+  );
+  check('group kind is friend', g.rows[0]?.kind === 'friend', g.rows[0]?.kind ?? 'missing');
+  check('group_type is other (not overloaded)', g.rows[0]?.group_type === 'other',
+    g.rows[0]?.group_type ?? 'missing');
+  check('created_by is the caller', g.rows[0]?.created_by === ashaUserId);
+  // The sentinel must carry the ':ph:' marker — cleanup matches on it.
+  check('name is the placeholder sentinel',
+    (g.rows[0]?.name ?? '').startsWith(`friend:${ashaUserId.slice(0, 8)}:ph:`),
+    g.rows[0]?.name ?? 'missing');
+
+  const m = await db.query<{ id: string; user_id: string | null; role: string; display_name: string; upi_id: string | null }>(
+    `select id, user_id, role, display_name, upi_id from group_members
+      where group_id = $1 order by joined_at`,
+    [tabId],
+  );
+  check('exactly 2 members', m.rows.length === 2, `got ${m.rows.length}`);
+
+  const realRow = m.rows.find((r) => r.user_id !== null);
+  const phRow = m.rows.find((r) => r.user_id === null);
+  check('one REAL member, one PLACEHOLDER member', !!realRow && !!phRow,
+    JSON.stringify(m.rows.map((r) => r.user_id)));
+  check('real member is the caller, admin',
+    realRow?.user_id === ashaUserId && realRow?.role === 'admin',
+    `${realRow?.role} / ${realRow?.user_id?.slice(0, 8)}`);
+  check('placeholder has user_id NULL and role member', phRow?.user_id === null
+    && phRow?.role === 'member', String(phRow?.role));
+  check('placeholder display_name is the name passed in', phRow?.display_name === PH_NAME,
+    String(phRow?.display_name));
+  check('placeholder upi_id is the UPI passed in', phRow?.upi_id === PH_UPI,
+    String(phRow?.upi_id));
+
+  // ---- 2. NO FRIENDSHIPS ROW (the dedup-skip is real) --------------------
+  const f = await db.query<{ c: string }>(
+    `select count(*) c from friendships where group_id = $1`, [tabId],
+  );
+  check('NO friendships row for a placeholder tab', f.rows[0].c === '0', f.rows[0].c);
+
+  // ...and real-friend dedup still works, unchanged by M3. Asha<->Bhavi already
+  // has a tab from section 10, so this must return that same one.
+  const bhaviUserId = (await db.query<{ id: string }>(
+    `select p.id from profiles p join auth.users u on u.id = p.id where u.email = $1`,
+    [BHAVI_EMAIL],
+  )).rows[0].id;
+  const realAgain = await asha.rpc('create_friend_tab', { p_other: bhaviUserId });
+  check('real-friend dedup still works (M2 unchanged)', !realAgain.error,
+    realAgain.error?.message ?? '');
+  const realPairRows = await db.query<{ c: string }>(
+    `select count(*) c from friendships
+      where user_lo = least($1::uuid,$2::uuid) and user_hi = greatest($1::uuid,$2::uuid)`,
+    [ashaUserId, bhaviUserId],
+  );
+  check('real pair STILL has exactly one friendship row', realPairRows.rows[0].c === '1',
+    realPairRows.rows[0].c);
+
+  // Not idempotent, by design: no stable identity for a placeholder, so a second
+  // call with the same name is a SECOND tab. Asserted so the behaviour is pinned
+  // rather than discovered later.
+  const twice = await asha.rpc('create_placeholder_friend_tab', { p_name: PH_NAME });
+  check('a second call with the same name makes a SEPARATE tab',
+    !twice.error && twice.data !== tabId,
+    `${String(twice.data).slice(0, 8)} vs ${tabId.slice(0, 8)}`);
+
+  // ---- 3. M1 READ INTEGRATION -------------------------------------------
+  type FP = {
+    group_id: string; my_member_id: string; counterparty_member_id: string;
+    counterparty_user_id: string | null; name: string; upi: string | null; net_minor: string;
+  };
+  const posRes = await asha.rpc('my_friend_positions');
+  check('my_friend_positions succeeds', !posRes.error, posRes.error?.message ?? '');
+  const phTab = ((posRes.data ?? []) as FP[]).find((r) => r.group_id === tabId);
+
+  check('the placeholder tab appears in my_friend_positions', phTab !== undefined);
+  if (phTab) {
+    // The whole point: resolved from group_members, since there is no profiles row.
+    check('counterparty NAME resolves from group_members', phTab.name === PH_NAME, phTab.name);
+    check('counterparty UPI resolves from group_members', phTab.upi === PH_UPI, String(phTab.upi));
+    // THE cash-settle signal the UI branches on.
+    check('counterparty_user_id IS NULL (the placeholder signal)',
+      phTab.counterparty_user_id === null, String(phTab.counterparty_user_id));
+    eq('a brand-new placeholder tab nets to zero', BigInt(phTab.net_minor), 0n);
+  }
+
+  // ---- 4. SIGNED NET AFTER AN EXPENSE -----------------------------------
+  // Asha pays 3000, split equally: the placeholder owes her 1500, so her net is
+  // +1500 on this tab. Seeded directly — create_expense is not what is under test.
+  const phExpense = '5171a11a-0000-4000-8000-0000000000e5';
+  await db.query(
+    `insert into expenses (id, group_id, paid_by, amount_minor, description, created_by)
+     values ($1,$2,$3,3000,'Placeholder tab lunch',$4)`,
+    [phExpense, tabId, realRow!.id, ashaUserId],
+  );
+  await db.query(
+    `insert into expense_splits (expense_id, member_id, share_minor, share_type) values
+       ($1,$2,1500,'equal'), ($1,$3,1500,'equal')`,
+    [phExpense, realRow!.id, phRow!.id],
+  );
+
+  const afterExp = ((await asha.rpc('my_friend_positions')).data ?? []) as FP[];
+  const withExp = afterExp.find((r) => r.group_id === tabId);
+  eq('PLACEHOLDER OWES YOU — net is +1500', BigInt(withExp?.net_minor ?? '-1'), 1500n);
+
+  const gb = await db.query<{ net_minor: string }>(
+    `select net_minor from group_balances($1) where member_id = $2`, [tabId, realRow!.id],
+  );
+  eq('DRIFT — my_friend_positions === group_balances', BigInt(withExp?.net_minor ?? '-1'),
+    BigInt(gb.rows[0]?.net_minor ?? '-2'));
+
+  // ---- 5. CASH SETTLE IS REACHABLE HERE ---------------------------------
+  // On a real-to-real tab record_cash_settlement refuses (both have accounts).
+  // Here the placeholder side has user_id NULL, so the guard does not fire — and
+  // it MUST not, or a placeholder's debt could never be settled at all.
+  const cashIn = await asha.rpc('record_cash_settlement', {
+    p_group_id: tabId,
+    p_from_member: phRow!.id,   // placeholder pays
+    p_to_member: realRow!.id,   // ...the caller
+    p_amount_minor: 1500,
+  });
+  check('cash settle PLACEHOLDER -> you is accepted', !cashIn.error, cashIn.error?.message ?? '');
+
+  if (cashIn.data) {
+    const row = await db.query<{ method: string; status: string; recorded_by: string | null }>(
+      `select method, status, recorded_by from settlements where id = $1`, [cashIn.data as string],
+    );
+    check('cash row is method=cash, confirmed at insert',
+      row.rows[0]?.method === 'cash' && row.rows[0]?.status === 'confirmed',
+      `${row.rows[0]?.method}/${row.rows[0]?.status}`);
+    check('recorded_by is the real member who recorded it',
+      row.rows[0]?.recorded_by === realRow!.id, String(row.rows[0]?.recorded_by));
+
+    const settled = ((await asha.rpc('my_friend_positions')).data ?? []) as FP[];
+    eq('SETTLED — placeholder tab nets to zero',
+      BigInt(settled.find((r) => r.group_id === tabId)?.net_minor ?? '-1'), 0n);
+
+    await db.query(`delete from settlements where id = $1`, [cashIn.data as string]);
+  }
+
+  // The other direction: you pay the placeholder.
+  const cashOut = await asha.rpc('record_cash_settlement', {
+    p_group_id: tabId,
+    p_from_member: realRow!.id,
+    p_to_member: phRow!.id,
+    p_amount_minor: 200,
+  });
+  check('cash settle you -> PLACEHOLDER is accepted', !cashOut.error, cashOut.error?.message ?? '');
+  if (cashOut.data) {
+    await db.query(`delete from settlements where id = $1`, [cashOut.data as string]);
+  }
+
+  // ---- 6. THE CAP STILL HOLDS -------------------------------------------
+  // Inserted as the table owner, the most privileged path; the trigger is
+  // SECURITY DEFINER and must refuse regardless.
+  let capBlocked = false;
+  let capDetail = '';
+  try {
+    await db.query('begin');
+    await db.query(
+      `insert into group_members (group_id, user_id, display_name, role)
+       values ($1,null,'Third wheel','member')`,
+      [tabId],
+    );
+    await db.query('rollback');
+  } catch (e) {
+    capBlocked = true;
+    capDetail = (e as Error).message.split(String.fromCharCode(10))[0];
+    await db.query('rollback');
+  }
+  check('third member on a PLACEHOLDER tab is REJECTED', capBlocked, capDetail);
+
+  // ---- 7. REJECTIONS ----------------------------------------------------
+  const blank = await asha.rpc('create_placeholder_friend_tab', { p_name: '' });
+  check('blank name is REJECTED', !!blank.error, blank.error?.message ?? 'NO ERROR — hole');
+
+  const spaces = await asha.rpc('create_placeholder_friend_tab', { p_name: '   ' });
+  check('whitespace-only name is REJECTED', !!spaces.error,
+    spaces.error?.message ?? 'NO ERROR — hole');
+
+  // p_upi omitted entirely — the DEFAULT must resolve, and a blank UPI must
+  // store as NULL rather than ''.
+  const noUpi = await asha.rpc('create_placeholder_friend_tab', { p_name: 'Sunil', p_upi: '  ' });
+  check('one-argument form resolves (p_upi default)', !noUpi.error, noUpi.error?.message ?? '');
+  if (noUpi.data) {
+    const u = await db.query<{ upi_id: string | null }>(
+      `select upi_id from group_members where group_id = $1 and user_id is null`,
+      [noUpi.data as string],
+    );
+    check('blank UPI is stored as NULL, not empty string', u.rows[0]?.upi_id === null,
+      JSON.stringify(u.rows[0]?.upi_id));
+  }
+
+  const anonClient = createClient(SUPABASE_URL, ANON_KEY, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  const anonCall = await anonClient.rpc('create_placeholder_friend_tab', { p_name: 'Nope' });
+  check('anon CANNOT execute create_placeholder_friend_tab', !!anonCall.error,
+    anonCall.error?.message ?? 'NO ERROR — hole');
+
+  // Leave the expense behind for cleanup to remove with the group.
+  await db.query(`delete from expense_splits where expense_id = $1`, [phExpense]);
+  await db.query(`delete from expenses where id = $1`, [phExpense]);
+}
+
 async function assertRlsEnabled(): Promise<void> {
   section('6. RLS ENABLED on all six tables');
 
@@ -1516,6 +1754,11 @@ async function cleanup(): Promise<void> {
   // Without this the suite leaks a group + 2 members + a friendship into prod
   // on every run, and the idempotence assertions stop meaning anything because
   // the pair already exists before the run starts.
+  // The join to profiles is an INNER join on gm.user_id, so it only ever matches
+  // the REAL member of a tab — which is all that is needed to identify the group,
+  // including a placeholder tab from M3 (its real side is always a test user).
+  // Once the group id is known, the loop below deletes every member row it holds,
+  // placeholder rows included.
   const { rows: friendGroups } = await db.query<{ id: string }>(
     `select distinct g.id
        from groups g
@@ -1526,10 +1769,30 @@ async function cleanup(): Promise<void> {
     [TEST_EMAILS_FOR_CLEANUP],
   );
 
+  // Belt and braces for M3: a placeholder tab whose real member row was somehow
+  // already gone would be invisible to the query above, because that join needs
+  // a non-null user_id. The sentinel 'friend:<me8>:ph:<rand>' carries the
+  // creator's id, so match on the test users' ids directly. Without this a
+  // half-deleted placeholder tab would linger in prod across runs.
+  const { rows: phGroups } = await db.query<{ id: string }>(
+    `select g.id
+       from groups g
+       join auth.users u on u.id = g.created_by
+      where g.kind = 'friend'
+        and g.name like 'friend:%:ph:%'
+        and u.email = any($1)`,
+    [TEST_EMAILS_FOR_CLEANUP],
+  );
+
   // friendships rows go first: group_id is ON DELETE CASCADE, so deleting the
   // group would take them anyway, but being explicit means a failure here is
   // visible rather than silently relying on cascade order.
-  for (const g of [GROUP_ID, GROUP_2, GROUP_F, ...friendGroups.map((r) => r.id)]) {
+  const friendGroupIds = new Set([
+    ...friendGroups.map((r) => r.id),
+    ...phGroups.map((r) => r.id),
+  ]);
+
+  for (const g of [GROUP_ID, GROUP_2, GROUP_F, ...friendGroupIds]) {
     await db.query(`delete from friendships where group_id = $1`, [g]);
     await db.query(`delete from expense_splits where expense_id in (select id from expenses where group_id = $1)`, [g]);
     await db.query(`delete from settlements where group_id = $1`, [g]);
