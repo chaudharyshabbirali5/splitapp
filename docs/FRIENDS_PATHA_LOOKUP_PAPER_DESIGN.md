@@ -33,11 +33,12 @@ the work.
 - **Build fully now, Resend last.** The RPC is built and tested against the two
   existing accounts now; it simply won't find a stranger until Resend lets strangers
   sign up. Real work now, real-user payoff after Resend.
-- **UPI-only — no phone.** `profiles` has no phone column (confirmed by product
-  owner; Claude Code re-verifies against live schema as a formality). So v1 lookup
-  is UPI-ID exact-match only, and the screen's **"UPI ID or phone number" label and
-  the `98765 43210` placeholder are trimmed to UPI-only** — the copy must not
-  promise a phone path the backend doesn't have. This copy change ships with M5.
+- **UPI-only.** `profiles` has a `phone` column, but no code ever writes it and
+  all rows are NULL, so a phone lookup matches nothing. v1 lookup is UPI-ID
+  exact-match only, and the screen's **"UPI ID or phone number" label and the
+  `98765 43210` placeholder are trimmed to UPI-only** — the copy must not promise
+  a phone path the backend doesn't serve. This copy change ships with M5's
+  frontend.
 
 ## 3. Open design recommendations (confirm at review)
 
@@ -60,9 +61,9 @@ the work.
 
 ## 4. Step 0 — the read-only investigation that shapes the contract (Claude Code)
 
-Phone is already settled: **no phone column exists** (product owner confirmed) →
-v1 is UPI-only and the screen copy trims (§2). Claude Code confirms this against
-live schema in passing, but it's not an open question.
+Phone is already settled: the `phone` column exists but is dead — never written
+by any code, NULL across all rows — so a phone lookup matches nothing and v1 is
+UPI-only, copy trims (§2). Not an open question.
 
 The one real **pre-SQL check that shapes the contract:**
 

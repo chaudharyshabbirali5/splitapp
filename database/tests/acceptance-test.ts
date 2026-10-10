@@ -172,6 +172,7 @@ async function main(): Promise<void> {
     await assertCashSettlements();
     await assertFriendTabCreation(ashaUserId, bhaviUserId, racerUserId);
     await assertPlaceholderFriendTabs(ashaUserId);
+    await assertHandleLookup();
     await assertRlsEnabled();
     await assertRlsBehaviour(ashaUserId, outsiderUserId);
   } finally {
@@ -1620,6 +1621,226 @@ async function assertPlaceholderFriendTabs(ashaUserId: string): Promise<void> {
   // Leave the expense behind for cleanup to remove with the group.
   await db.query(`delete from expense_splits where expense_id = $1`, [phExpense]);
   await db.query(`delete from expenses where id = $1`, [phExpense]);
+}
+
+/**
+ * find_friend_by_handle() — the Path A lookup (migration 20261005104500).
+ *
+ * SELF-CONTAINED BY DESIGN. This section creates its own accounts, asserts, and
+ * deletes them, depending on no standing data. That is not tidiness: the only
+ * non-null upi_id in prod is shared by two accounts, so a test leaning on
+ * existing rows would exercise the AMBIGUOUS path while claiming to test the
+ * happy one. Every handle here is generated per run.
+ *
+ * Every call goes through PostgREST with a real JWT: the function reads
+ * auth.uid() for self-exclusion, so a service-role call would behave differently.
+ */
+async function assertHandleLookup(): Promise<void> {
+  section('12. find_friend_by_handle — exact match, ambiguity refused');
+
+  await db.query(`notify pgrst, 'reload schema'`);
+  await new Promise((r) => setTimeout(r, 1500));
+
+  // Unique per run, so a previous crashed run cannot make this one pass or fail.
+  const stamp = Date.now().toString(36);
+  const SEEKER = `splitapp-lookup-seeker-${stamp}@example.com`;
+  const TARGET = `splitapp-lookup-target-${stamp}@example.com`;
+  const DUP_A = `splitapp-lookup-dupa-${stamp}@example.com`;
+  const DUP_B = `splitapp-lookup-dupb-${stamp}@example.com`;
+  const emails = [SEEKER, TARGET, DUP_A, DUP_B];
+
+  const TARGET_HANDLE = `uniq.${stamp}@okaxis`;
+  const MIXED_CASE_STORED = `Foo.${stamp}@OKAXIS`; // stored with capitals
+  const SHARED_HANDLE = `shared.${stamp}@okicici`;
+  const SEEKER_HANDLE = `seeker.${stamp}@okhdfc`;
+
+  const ids: Record<string, string> = {};
+  const createdGroups: string[] = [];
+
+  try {
+    for (const e of emails) {
+      const { data, error } = await admin.auth.admin.createUser({ email: e, email_confirm: true });
+      if (error || !data.user) throw new Error(`createUser(${e}) failed: ${error?.message}`);
+      ids[e] = data.user.id;
+    }
+
+    // Names and handles pinned directly: the signup trigger derives a
+    // display_name from the email, and these assertions name exact values.
+    await db.query(
+      `update profiles set display_name='Target Person', upi_id=$2 where id=$1`,
+      [ids[TARGET], TARGET_HANDLE],
+    );
+    await db.query(`update profiles set display_name='Seeker', upi_id=$2 where id=$1`, [
+      ids[SEEKER], SEEKER_HANDLE,
+    ]);
+    await db.query(`update profiles set display_name='Dup One', upi_id=$2 where id=$1`, [
+      ids[DUP_A], SHARED_HANDLE,
+    ]);
+    await db.query(`update profiles set display_name='Dup Two', upi_id=$2 where id=$1`, [
+      ids[DUP_B], SHARED_HANDLE,
+    ]);
+
+    const seeker = await signInAs(SEEKER);
+    type Hit = { user_id: string; display_name: string };
+    const look = async (handle: string | null) => {
+      const { data, error } = await seeker.rpc('find_friend_by_handle', { p_handle: handle });
+      return { rows: (data ?? []) as Hit[], error };
+    };
+
+    // ---- 1. HAPPY PATH -----------------------------------------------------
+    const hit = await look(TARGET_HANDLE);
+    check('exact handle returns no error', !hit.error, hit.error?.message ?? '');
+    check('exact handle returns exactly ONE row', hit.rows.length === 1, `got ${hit.rows.length}`);
+    check('returns the right user_id', hit.rows[0]?.user_id === ids[TARGET],
+      `${hit.rows[0]?.user_id?.slice(0, 8)} vs ${ids[TARGET].slice(0, 8)}`);
+    check('returns the right display_name', hit.rows[0]?.display_name === 'Target Person',
+      String(hit.rows[0]?.display_name));
+
+    // THE RETURN SHAPE IS THE SECURITY BOUNDARY. A function leaking upi_id or
+    // email would pass every behavioural check above and still be a harvester,
+    // so the column list is asserted directly.
+    const keys = Object.keys(hit.rows[0] ?? {}).sort();
+    check('row has EXACTLY two columns', keys.length === 2, JSON.stringify(keys));
+    check('columns are user_id + display_name',
+      keys.join(',') === 'display_name,user_id', JSON.stringify(keys));
+    for (const leak of ['upi_id', 'upi', 'email', 'phone', 'id', 'created_at']) {
+      check(`does NOT leak ${leak}`, !(leak in (hit.rows[0] ?? {})));
+    }
+
+    // ---- 2. NORMALIZATION, BOTH SIDES -------------------------------------
+    // Stored WITH capitals, queried in lowercase. Only passes if the column is
+    // wrapped in lower(btrim(...)) too, not just the input.
+    await db.query(`update profiles set upi_id=$2 where id=$1`, [ids[TARGET], MIXED_CASE_STORED]);
+    const norm = await look(MIXED_CASE_STORED.toLowerCase());
+    check('stored mixed-case matches a lowercase query', norm.rows.length === 1,
+      `got ${norm.rows.length}`);
+    // ...and the reverse: stored lowercase, queried with capitals and padding.
+    await db.query(`update profiles set upi_id=$2 where id=$1`, [ids[TARGET], TARGET_HANDLE]);
+    const norm2 = await look(`  ${TARGET_HANDLE.toUpperCase()}  `);
+    check('padded UPPERCASE query matches a lowercase stored handle',
+      norm2.rows.length === 1, `got ${norm2.rows.length}`);
+
+    // ---- 3. ANTI-FISHING: no partial match, tested hard -------------------
+    const full = TARGET_HANDLE;
+    const probes: [string, string][] = [
+      ['prefix', full.slice(0, 8)],
+      ['suffix', full.slice(-8)],
+      ['substring', full.slice(3, 10)],
+      ['bank part only', '@okaxis'],
+      ['local part only', full.split('@')[0]],
+      ['sql wildcard %', '%'],
+      ['wildcard around', `%${full.slice(2, 6)}%`],
+      ['underscore wildcard', full.replace(/./g, '_')],
+      ['handle plus char', `${full}x`],
+      ['char removed', full.slice(0, -1)],
+    ];
+    for (const [label, probe] of probes) {
+      const r = await look(probe);
+      check(`NO match on ${label}`, !r.error && r.rows.length === 0,
+        r.error ? `error: ${r.error.message}` : `rows: ${r.rows.length}`);
+    }
+
+    // ---- 4. NO MATCH, BLANK, NULL ----------------------------------------
+    for (const [label, v] of [
+      ['random handle', `nobody.${stamp}@okaxis`],
+      ['empty string', ''],
+      ['whitespace only', '   '],
+    ] as [string, string][]) {
+      const r = await look(v);
+      check(`${label} -> zero rows, no error`, !r.error && r.rows.length === 0,
+        r.error ? `error: ${r.error.message}` : `rows: ${r.rows.length}`);
+    }
+    const nul = await look(null);
+    check('null input -> zero rows, no error', !nul.error && nul.rows.length === 0,
+      nul.error ? `error: ${nul.error.message}` : `rows: ${nul.rows.length}`);
+
+    // ---- 5. SELF-EXCLUSION ------------------------------------------------
+    const self = await look(SEEKER_HANDLE);
+    check('own handle -> zero rows (self-excluded)', !self.error && self.rows.length === 0,
+      self.error ? `error: ${self.error.message}` : `rows: ${self.rows.length}`);
+
+    // ---- 6. AMBIGUOUS -> NOT FOUND, NEVER A GUESS ------------------------
+    // Two accounts share this handle. A `limit 1` implementation returns one of
+    // them and passes a naive test; this asserts zero.
+    const amb = await look(SHARED_HANDLE);
+    check('shared handle -> zero rows (ambiguous refused)',
+      !amb.error && amb.rows.length === 0,
+      amb.error ? `error: ${amb.error.message}` : `rows: ${amb.rows.length}`);
+    check('ambiguous did NOT return either duplicate',
+      !amb.rows.some((r) => r.user_id === ids[DUP_A] || r.user_id === ids[DUP_B]));
+
+    // Proof the fixture is genuinely ambiguous rather than mis-seeded.
+    const dupCount = await db.query<{ c: string }>(
+      `select count(*)::text c from profiles where lower(btrim(upi_id)) = $1`,
+      [SHARED_HANDLE.toLowerCase()],
+    );
+    check('the ambiguous fixture really holds 2 rows', dupCount.rows[0].c === '2',
+      dupCount.rows[0].c);
+
+    // ---- 7. END TO END: lookup -> create_friend_tab -> both sides see it --
+    const made = await seeker.rpc('create_friend_tab', { p_other: ids[TARGET] });
+    check('create_friend_tab accepts the looked-up user_id', !made.error,
+      made.error?.message ?? '');
+    const tabId = made.data as string | null;
+    if (tabId) {
+      createdGroups.push(tabId);
+      const mine = ((await seeker.rpc('my_friend_positions')).data ?? []) as {
+        group_id: string; counterparty_user_id: string | null; name: string;
+      }[];
+      const row = mine.find((r) => r.group_id === tabId);
+      check('tab appears for the seeker', row !== undefined);
+      check('counterparty is the looked-up person',
+        row?.counterparty_user_id === ids[TARGET] && row?.name === 'Target Person',
+        String(row?.name));
+
+      const targetClient = await signInAs(TARGET);
+      const theirs = ((await targetClient.rpc('my_friend_positions')).data ?? []) as {
+        group_id: string; counterparty_user_id: string | null;
+      }[];
+      const mirrored = theirs.find((r) => r.group_id === tabId);
+      check('the SAME tab appears for the other member', mirrored !== undefined);
+      check('and its counterparty is the seeker',
+        mirrored?.counterparty_user_id === ids[SEEKER]);
+    }
+
+    // ---- 8. anon cannot execute it ---------------------------------------
+    const anonClient = createClient(SUPABASE_URL, ANON_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    const anonCall = await anonClient.rpc('find_friend_by_handle', { p_handle: TARGET_HANDLE });
+    check('anon CANNOT execute find_friend_by_handle', !!anonCall.error,
+      anonCall.error?.message ?? 'NO ERROR — hole');
+  } finally {
+    // ---- teardown: this section leaves nothing behind -------------------
+    await db.query('begin');
+    for (const g of createdGroups) {
+      await db.query(`delete from friendships where group_id = $1`, [g]);
+      await db.query(`delete from expense_splits where expense_id in (select id from expenses where group_id=$1)`, [g]);
+      await db.query(`delete from settlements where group_id = $1`, [g]);
+      await db.query(`delete from expenses where group_id = $1`, [g]);
+      await db.query(`delete from group_members where group_id = $1`, [g]);
+      await db.query(`delete from groups where id = $1`, [g]);
+    }
+    await db.query('commit');
+
+    const { data: list } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+    for (const u of list?.users ?? []) {
+      if (u.email && emails.includes(u.email)) await admin.auth.admin.deleteUser(u.id);
+    }
+
+    // Residual check, asserted rather than assumed.
+    const leftUsers = await db.query<{ c: string }>(
+      `select count(*)::text c from auth.users where email = any($1)`, [emails],
+    );
+    const leftGroups = await db.query<{ c: string }>(
+      `select count(*)::text c from groups where id = any($1)`,
+      [createdGroups.length ? createdGroups : ['00000000-0000-0000-0000-000000000000']],
+    );
+    check('section 12 left ZERO residual accounts', leftUsers.rows[0].c === '0',
+      leftUsers.rows[0].c);
+    check('section 12 left ZERO residual groups', leftGroups.rows[0].c === '0',
+      leftGroups.rows[0].c);
+  }
 }
 
 async function assertRlsEnabled(): Promise<void> {
