@@ -3,25 +3,30 @@ import { redirect } from 'next/navigation';
 
 import { createClient } from '@/lib/supabase/server';
 
+import { LookupForm } from './lookup-form';
+
 export const dynamic = 'force-dynamic';
 
 /**
- * Add a friend — the lookup entry screen (Path A).
+ * Add a friend — the lookup entry screen.
  *
- * PATH A IS DELIBERATELY NOT FUNCTIONAL. Looking someone up by UPI ID or phone
- * needs a server-side lookup function that does not exist yet: nothing in the
- * schema resolves a UPI ID or phone to a profile, and profiles_select_own means
- * a caller cannot read another person's row to do it client-side either. Building
- * the field and wiring it to nothing — or worse, to a client-side guess — would
- * be a working-looking search that can never match. So the field is present as
- * the designed entry point and the button is visibly dead, with a line saying
- * why.
+ * Two paths, in order of likelihood:
  *
- * The field is rendered DISABLED rather than live-but-inert: a field you can type
- * into, with a button that refuses, teaches the user their input was wrong. A
- * disabled field says the feature is not ready, which is the true statement.
+ *   Path A (above the rule)  Find someone already on SplitApp by their exact UPI
+ *                            handle, via find_friend_by_handle (M5). Live.
+ *   Path B (below the rule)  Keep a private tab against a name, for someone who
+ *                            is not on the app at all. Unchanged, and now reached
+ *                            from two places: the "Not on SplitApp?" entry here,
+ *                            and the not-found state of a lookup.
  *
- * Path B — add by name — is fully built and sits below the hairline.
+ * The lookup is a client component because it holds three result states inline
+ * and must not navigate between them — a found match is a step in the same
+ * screen, not a new route.
+ *
+ * On phone paths: the field is UPI-only. The backend serves no phone lookup —
+ * profiles.phone exists but is never written and is NULL on every row — so the
+ * label and placeholder say UPI and nothing else. Copy that promised a phone
+ * path the database cannot serve was the thing to remove here.
  */
 export default async function NewFriendPage() {
   const supabase = await createClient();
@@ -46,34 +51,8 @@ export default async function NewFriendPage() {
         </p>
       </header>
 
-      {/* ---- Path A: look them up on SplitApp (not built) ---- */}
-      <section className="flex flex-col gap-1.5">
-        <label htmlFor="handle" className="field-label">
-          UPI ID or phone number
-        </label>
-        <input
-          id="handle"
-          name="handle"
-          disabled
-          placeholder="name@bank or 98765 43210"
-          aria-describedby="handle-hint handle-unavailable"
-          className="field"
-        />
-        <p id="handle-hint" className="hint">
-          We look them up on SplitApp. Nothing is sent to them.
-        </p>
-
-        <button type="button" disabled className="btn btn-dead btn-block mt-1.5">
-          Look up
-        </button>
-
-        {/* Says what is true, in the place where the user is about to be
-            disappointed. Pending amber, not debit red — nothing here is money. */}
-        <p id="handle-unavailable" className="notice-pending mt-1.5">
-          Looking people up isn&rsquo;t ready yet. You can still add someone by name
-          below.
-        </p>
-      </section>
+      {/* ---- Path A: look them up on SplitApp ---- */}
+      <LookupForm />
 
       {/* ---- the hairline, then Path B ---- */}
       <div className="flex flex-col gap-3 border-t border-rule pt-5">
